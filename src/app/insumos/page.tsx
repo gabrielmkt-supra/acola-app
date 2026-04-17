@@ -388,21 +388,21 @@ export default function GestaoInsumos() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-primary/40 uppercase tracking-widest ml-1">Quantidade / Medida</label>
-                    <div className="flex gap-2 p-1 bg-background border border-primary/5 rounded-2xl items-center">
+                    <div className="flex bg-background border border-primary/5 rounded-2xl overflow-hidden focus-within:ring-2 focus-within:ring-secondary/50 transition-all">
                       <input 
                         type="number"
                         required
                         value={initialQty || ""}
                         onChange={(e) => setInitialQty(Number(e.target.value))}
-                        className="flex-1 p-3 bg-transparent outline-none text-sm font-black transition-all"
+                        className="flex-1 p-4 bg-transparent outline-none text-sm font-black min-w-0"
                         placeholder="Ex: 395"
                       />
-                      <div className="w-px h-6 bg-primary/10" />
-                      <div className="relative flex items-center">
+                      <div className="w-px bg-primary/10 self-stretch my-2" />
+                      <div className="relative flex items-center bg-primary/5 px-2">
                         <select 
                           value={unit}
                           onChange={(e: any) => setUnit(e.target.value)}
-                          className="pl-3 pr-8 py-3 bg-primary/5 text-secondary text-[10px] font-black uppercase outline-none cursor-pointer rounded-xl border border-primary/10 hover:border-secondary/50 transition-all appearance-none"
+                          className="pl-2 pr-6 py-2 bg-transparent text-secondary text-[10px] font-black uppercase outline-none cursor-pointer appearance-none min-w-[60px]"
                         >
                           <option value="g">g</option>
                           <option value="kg">kg</option>
@@ -413,7 +413,7 @@ export default function GestaoInsumos() {
                           <option value="cx">cx</option>
                           <option value="pct">pct</option>
                         </select>
-                        <span className="material-symbols-outlined absolute right-2 pointer-events-none text-secondary text-xs">keyboard_arrow_down</span>
+                        <span className="material-symbols-outlined absolute right-1 pointer-events-none text-secondary text-xs">expand_more</span>
                       </div>
                     </div>
                   </div>
