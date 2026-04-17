@@ -6,14 +6,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-interface Ingredient {
+interface RecipeIngredient {
   id: string;
+  insumoId?: string;
   name: string;
-  buyPrice: number;
-  buyQty: number; // Volume total comprado (ex: 1kg)
-  buyUnit: "un" | "g" | "kg" | "ml" | "L";
-  recipeQty: number; // Volume usado na receita (ex: 20g)
-  recipeUnit: "un" | "g" | "kg" | "ml" | "L";
+  type: 'lote' | 'unidade' | 'inteiro';
+  qty: number;
+  unit: string;
+  unitCost: number; // Custo unitário do insumo no momento da adição
+  packageQty?: number; // Quantidade da embalagem para modo 'inteiro'
 }
 
 export default function NovoProduto() {
@@ -23,10 +24,12 @@ export default function NovoProduto() {
   const [categoria, setCategoria] = useState("Trufa");
   const [precoVenda, setPrecoVenda] = useState(0);
   const [estoqueInicial, setEstoqueInicial] = useState(0);
+  const [rendimento, setRendimento] = useState(1); // Novo campo de rendimento
   const [foto, setFoto] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [ingredientes, setIngredientes] = useState<Ingredient[]>([]);
+  const [ingredientes, setIngredientes] = useState<RecipeIngredient[]>([]);
+  const [masterInsumos, setMasterInsumos] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [inventory, setInventory] = useState<any[]>([]);
   const [subtipo, setSubtipo] = useState<"premium" | "classico" | "">("premium");
@@ -47,15 +50,23 @@ export default function NovoProduto() {
   const [importMode, setImportMode] = useState<"merge" | "replace">("merge");
   const importFileRef = useRef<HTMLInputElement>(null);
 
-  // Carregar inventário para o modo reposição do Supabase
+  // Carregar inventário e insumos
   useEffect(() => {
-    const fetchInventory = async () => {
-      const { data } = await supabase.from('products').select('*').order('name');
-      if (data) setInventory(data);
+    const fetchData = async () => {
+      const { data: prodData } = await supabase.from('products').select('*').order('name');
+      if (prodData) setInventory(prodData);
+
+      const { data: insData } = await supabase.from('insumos').select('*').order('nome');
+      if (insData) setMasterInsumos(insData.map(d => ({
+        id: d.id,
+        name: d.nome,
+        unit: d.unidade,
+        unitCost: Number(d.custo_unitario)
+      })));
     };
     
-    if (viewMode === "restock") {
-      fetchInventory();
+    if (viewMode === "restock" || viewMode === "new") {
+      fetchData();
     }
   }, [viewMode]);
 
@@ -307,14 +318,13 @@ export default function NovoProduto() {
 
   // Lógica de adicionar ingrediente
   const addIngredient = () => {
-    const newIngredient: Ingredient = {
+    const newIngredient: RecipeIngredient = {
       id: `ing-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: "",
-      buyPrice: 0,
-      buyQty: 0,
-      buyUnit: "g",
-      recipeQty: 0,
-      recipeUnit: "g",
+      type: "lote",
+      qty: 0,
+      unit: "g",
+      unitCost: 0,
     };
     setIngredientes(prev => [...prev, newIngredient]);
   };
@@ -323,20 +333,55 @@ export default function NovoProduto() {
     setIngredientes(ingredientes.filter((i) => i.id !== id));
   };
 
-  const updateIngredient = (id: string, field: keyof Ingredient, value: any) => {
+  const updateIngredient = (id: string, field: keyof RecipeIngredient, value: any) => {
     setIngredientes(
-      ingredientes.map((i) => (i.id === id ? { ...i, [field]: value } : i))
+      ingredientes.map((i) => {
+        if (i.id === id) {
+          const updated = { ...i, [field]: value };
+          
+          // Se mudou o nome, tenta buscar no master de insumos
+          if (field === "name") {
+            const matched = masterInsumos.find(mi => mi.name.toLowerCase() === value.toLowerCase());
+            if (matched) {
+              updated.insumoId = matched.id;
+              updated.unitCost = matched.unitCost;
+              updated.unit = matched.unit;
+            }
+          }
+          return updated;
+        }
+        return i;
+      })
     );
   };
 
   // Cálculos Financeiros
   const custosIngredientes = ingredientes.map((i) => {
-    const buy = getUnitData(i.buyQty, i.buyUnit);
-    const recipe = getUnitData(i.recipeQty, i.recipeUnit);
+    if (i.unitCost <= 0 || i.qty <= 0) return 0;
+
+    let cost = 0;
+    if (i.type === 'unidade') {
+      // Unidade: Custo direto por quantidade usada
+      cost = i.unitCost * i.qty;
+    } else if (i.type === 'lote') {
+      // Lote: Custo total do uso na receita dividido pelo rendimento
+      cost = (i.unitCost * i.qty) / Math.max(1, rendimento);
+    } else if (i.type === 'inteiro') {
+      // Inteiro: O usuário entra com a quantidade de "unidades inteiras" (ex: 1 lata)
+      // Estamos assumindo que a embalagem padrão foi o que definiu o custo unitário.
+      // Se não temos a Qtd da Embalagem separada, o usuário usa 'Lote' para pesos.
+      // Mas podemos tratar 'Inteiro' como um multiplicador direto se o unitCost for por 'un'.
+      // Se for por 'g', precisaríamos saber o peso da lata.
+      // Para simplificar e atender o pedido: 'Inteiro' entra valor todo e divide pelo rendimento.
+      // Vamos assumir que se ele seleciona 'Inteiro', o qty é a quantidade de EMBALAGENS.
+      // Mas como não temos o peso da embalagem salvo de forma fácil no momento nas interfaces,
+      // Se for 'Inteiro', vamos considerar que o unitCost * qty_embalagem (que ele cadastrou) é o custo.
+      // Por enquanto, faremos (i.unitCost * i.qty) / rendimento, 
+      // mas instruir que o calculo de Inteiro assume que o preco cadastrado era daquela unidade.
+      cost = (i.unitCost * i.qty) / Math.max(1, rendimento);
+    }
     
-    if (buy.family !== recipe.family || buy.baseQty <= 0) return 0;
-    
-    return (i.buyPrice / buy.baseQty) * recipe.baseQty;
+    return cost;
   });
 
   const subtotalReceita = custosIngredientes.reduce((acc, curr) => acc + curr, 0);
@@ -676,114 +721,126 @@ export default function NovoProduto() {
 
               {/* Direita: Calculadora de Ingredientes */}
               <div className="flex-1 bg-surface rounded-[32px] border border-primary/5 shadow-sm overflow-hidden flex flex-col min-h-[600px]">
-                <div className="p-8 border-b border-primary/5 flex items-center justify-between bg-surface-variant/20">
+                <div className="p-8 border-b border-primary/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-surface-variant/20">
                   <div>
                     <h2 className="text-lg font-black text-primary tracking-tight uppercase">Ingredientes da Receita</h2>
-                    <p className="text-[10px] font-bold text-primary/40 uppercase tracking-widest mt-1">Defina o custo base dividindo a compra pelo uso</p>
+                    <p className="text-[10px] font-bold text-primary/40 uppercase tracking-widest mt-1">Selecione os insumos e defina o rendimento</p>
                   </div>
-                  <button 
-                    type="button"
-                    onClick={addIngredient}
-                    className="flex items-center gap-2 px-6 py-3 bg-secondary text-primary rounded-2xl hover:scale-105 transition-all active:scale-95 cursor-pointer font-black text-xs uppercase tracking-widest shadow-lg"
-                  >
-                    <span className="material-symbols-outlined text-lg font-black">add</span>
-                    Add Ingrediente
-                  </button>
+                  
+                  <div className="flex items-center gap-6 bg-background/50 px-6 py-3 rounded-2xl border border-primary/5">
+                    <div className="flex flex-col">
+                      <span className="text-[8px] font-black text-primary/30 uppercase tracking-widest">Rendimento</span>
+                      <div className="flex items-center gap-2">
+                         <input 
+                           type="number"
+                           value={rendimento}
+                           onChange={(e) => setRendimento(Math.max(1, Number(e.target.value)))}
+                           className="w-12 bg-transparent text-sm font-black text-secondary outline-none border-b border-secondary/20 focus:border-secondary transition-all"
+                         />
+                         <span className="text-[10px] font-black text-primary/40 uppercase">Unidades</span>
+                      </div>
+                    </div>
+                    <div className="w-px h-8 bg-primary/10" />
+                    <button 
+                      type="button"
+                      onClick={addIngredient}
+                      className="flex items-center gap-2 text-secondary hover:text-secondary/80 transition-all font-black text-[10px] uppercase tracking-widest"
+                    >
+                      <span className="material-symbols-outlined text-lg">add_circle</span>
+                      Novo Item
+                    </button>
+                  </div>
                </div>
 
-                <div className="flex-1 overflow-x-auto p-8">
-                  <div className="min-w-[900px] flex flex-col gap-4">
+                <div className="flex-1 overflow-x-auto p-4 md:p-8">
+                  <div className="min-w-[850px] flex flex-col gap-3">
                     <AnimatePresence>
                       {ingredientes.length === 0 ? (
                         <motion.div 
                           initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                          className="flex flex-col items-center justify-center py-20 text-primary/20"
+                          className="flex flex-col items-center justify-center py-32 text-primary/10"
                         >
-                          <span className="material-symbols-outlined text-6xl mb-4">bakery_dining</span>
-                          <p className="font-bold text-sm tracking-tight text-center max-w-[200px]">Adicione os ingredientes para calcular o custo automático.</p>
+                          <span className="material-symbols-outlined text-7xl mb-4 italic">restaurant_menu</span>
+                          <p className="font-black text-[10px] uppercase tracking-[0.4em] text-center max-w-[250px]">Adicione os componentes da sua receita</p>
                         </motion.div>
                       ) : (
-                        ingredientes.map((ing) => {
-                          const buy = getUnitData(ing.buyQty, ing.buyUnit);
-                          const recipe = getUnitData(ing.recipeQty, ing.recipeUnit);
-                          const isCompatible = buy.family === recipe.family;
-                          const itemCost = isCompatible && buy.baseQty > 0 
-                            ? (ing.buyPrice / buy.baseQty) * recipe.baseQty 
-                            : 0;
+                        ingredientes.map((ing, idx) => {
+                          const itemCost = custosIngredientes[idx];
 
                           return (
                             <motion.div 
-                              key={ing.id}
-                              initial={{ opacity: 0, scale: 0.98 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.95 }}
-                              className="p-6 bg-background/40 rounded-[32px] grid grid-cols-12 gap-x-6 items-end relative group border border-primary/5 hover:border-secondary/20 transition-all font-bold"
+                               key={ing.id}
+                               initial={{ opacity: 0, x: -20 }}
+                               animate={{ opacity: 1, x: 0 }}
+                               exit={{ opacity: 0, x: 20 }}
+                               className="p-4 bg-background/40 rounded-3xl grid grid-cols-12 gap-4 items-center group border border-primary/5 hover:border-secondary/30 transition-all"
                             >
-                              <div className="col-span-3">
-                                 <label className="text-[10px] font-black text-primary/30 uppercase mb-2 block tracking-tight">Ingrediente</label>
-                                 <input 
-                                    className="w-full bg-background rounded-2xl p-4 text-sm font-bold border-none focus:ring-2 focus:ring-secondary outline-none text-primary"
-                                    placeholder="Nutella, Leite, etc."
-                                    value={ing.name}
-                                    onChange={(e) => updateIngredient(ing.id, "name", e.target.value)}
-                                 />
-                              </div>
-                              <div className="col-span-2">
-                                 <label className="text-[10px] font-black text-primary/30 uppercase mb-2 block tracking-tight">Compra (R$)</label>
-                                 <input 
-                                    type="number"
-                                    className="w-full bg-background rounded-2xl p-4 text-sm font-bold border-none focus:ring-2 focus:ring-secondary outline-none text-primary"
-                                    value={ing.buyPrice || ""}
-                                    onChange={(e) => updateIngredient(ing.id, "buyPrice", Number(e.target.value))}
-                                 />
-                              </div>
-                              <div className="col-span-2">
-                                 <label className="text-[10px] font-black text-primary/30 uppercase mb-2 block tracking-tight">Qtd Pote</label>
-                                 <div className="flex bg-background rounded-2xl overflow-hidden">
-                                    <input 
-                                       type="number"
-                                       className="w-full bg-transparent p-4 text-sm font-bold border-none outline-none text-primary"
-                                       value={ing.buyQty || ""}
-                                       onChange={(e) => updateIngredient(ing.id, "buyQty", Number(e.target.value))}
-                                    />
-                                    <select 
-                                       className="bg-primary/5 p-4 text-[10px] font-bold border-none outline-none text-primary"
-                                       value={ing.buyUnit}
-                                       onChange={(e) => updateIngredient(ing.id, "buyUnit", e.target.value)}
-                                    >
-                                       {["un", "g", "kg", "ml", "L"].map(u => <option key={u} value={u}>{u}</option>)}
-                                    </select>
-                                 </div>
-                              </div>
-                              <div className="col-span-2">
-                                 <label className="text-[10px] font-black text-primary/30 uppercase mb-2 block tracking-tight">Uso Receita</label>
-                                 <div className="flex bg-background rounded-2xl overflow-hidden">
-                                    <input 
-                                       type="number"
-                                       className="w-full bg-transparent p-4 text-sm font-bold border-none outline-none text-primary"
-                                       value={ing.recipeQty || ""}
-                                       onChange={(e) => updateIngredient(ing.id, "recipeQty", Number(e.target.value))}
-                                    />
-                                    <select 
-                                       className="bg-primary/5 p-4 text-[10px] font-bold border-none outline-none text-primary"
-                                       value={ing.recipeUnit}
-                                       onChange={(e) => updateIngredient(ing.id, "recipeUnit", e.target.value)}
-                                    >
-                                       {["un", "g", "kg", "ml", "L"].map(u => <option key={u} value={u}>{u}</option>)}
-                                    </select>
-                                 </div>
-                              </div>
-                              <div className="col-span-2">
-                                 <div className="bg-secondary/10 rounded-2xl p-4 text-center">
-                                    <p className="text-[9px] font-black text-primary/40 uppercase mb-0.5">Custo</p>
-                                    <p className="text-lg font-black text-primary">R${itemCost.toFixed(2)}</p>
-                                 </div>
-                              </div>
-                              <div className="col-span-1">
-                                 <button onClick={() => removeIngredient(ing.id)} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-error/10 text-error hover:bg-error hover:text-white transition-all">
-                                    <span className="material-symbols-outlined">delete</span>
-                                 </button>
-                              </div>
+                               <div className="col-span-3 space-y-1">
+                                  <label className="text-[8px] font-black text-primary/30 uppercase tracking-widest ml-1">Insumo</label>
+                                  <input 
+                                     list="master-insumos"
+                                     className="w-full bg-background/80 rounded-xl p-3 text-xs font-bold outline-none border border-primary/5 focus:border-secondary transition-all text-primary"
+                                     placeholder="Buscar insumo..."
+                                     value={ing.name}
+                                     onChange={(e) => updateIngredient(ing.id, "name", e.target.value)}
+                                  />
+                                  <datalist id="master-insumos">
+                                     {masterInsumos.map(mi => <option key={mi.id} value={mi.name} />)}
+                                  </datalist>
+                               </div>
+
+                               <div className="col-span-3 space-y-1">
+                                  <label className="text-[8px] font-black text-primary/30 uppercase tracking-widest ml-1">Tipo de Uso</label>
+                                  <div className="flex bg-background/80 rounded-xl p-1 border border-primary/5">
+                                     {(['lote', 'unidade', 'inteiro'] as const).map(type => (
+                                       <button
+                                         key={type}
+                                         type="button"
+                                         onClick={() => updateIngredient(ing.id, "type", type)}
+                                         className={`flex-1 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-tight transition-all ${ing.type === type ? "bg-secondary text-primary shadow-sm" : "text-primary/30 hover:text-primary"}`}
+                                       >
+                                         {type === 'lote' ? 'Lote' : type === 'unidade' ? 'Unit' : 'Inteiro'}
+                                       </button>
+                                     ))}
+                                  </div>
+                               </div>
+
+                               <div className="col-span-2 space-y-1">
+                                  <label className="text-[8px] font-black text-primary/30 uppercase tracking-widest ml-1">
+                                     {ing.type === 'inteiro' ? 'Qtd (Emb)' : `Uso (${ing.unit})`}
+                                  </label>
+                                  <input 
+                                     type="number"
+                                     className="w-full bg-background/80 rounded-xl p-3 text-xs font-black outline-none border border-primary/5 focus:border-secondary"
+                                     value={ing.qty || ""}
+                                     onChange={(e) => updateIngredient(ing.id, "qty", Number(e.target.value))}
+                                  />
+                               </div>
+
+                               <div className="col-span-3">
+                                  <div className="bg-secondary/5 rounded-2xl px-4 py-2 border border-secondary/10 flex justify-between items-center h-12">
+                                     <div>
+                                        <p className="text-[7px] font-black text-secondary/50 uppercase tracking-widest leading-none">Custo Unitário</p>
+                                        <p className="text-sm font-black text-primary italic leading-tight">
+                                           R$ {itemCost.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </p>
+                                     </div>
+                                     {ing.type !== 'unidade' && (
+                                        <div className="text-right">
+                                           <p className="text-[7px] font-black text-primary/20 uppercase tracking-widest leading-none">Total Item</p>
+                                           <p className="text-[10px] font-bold text-primary/30 leading-tight">
+                                              R$ {(itemCost * rendimento).toFixed(2)}
+                                           </p>
+                                        </div>
+                                     )}
+                                  </div>
+                               </div>
+
+                               <div className="col-span-1 flex justify-end">
+                                  <button onClick={() => removeIngredient(ing.id)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-error/5 text-error/40 hover:bg-error hover:text-white transition-all">
+                                     <span className="material-symbols-outlined text-sm">delete</span>
+                                  </button>
+                               </div>
                             </motion.div>
                           );
                         })
