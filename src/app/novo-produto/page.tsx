@@ -349,12 +349,13 @@ export default function NovoProduto() {
               updated.insumoId = matched.id;
               updated.unitCost = matched.unitCost;
               updated.unit = matched.unit;
+              // Pegar o preço cheio da embalagem
               updated.packagePrice = matched.latestPrice;
               updated.packageQty = matched.latestQty;
             }
           }
 
-          // Se mudou o tipo para 'inteiro', a quantidade passa a ser o número de EMBALAGENS (default 1)
+          // Se mudou o tipo para 'inteiro', a quantidade interna vira 1 (uma embalagem)
           if (field === "type" && value === "inteiro") {
              updated.qty = 1;
           }
@@ -368,19 +369,20 @@ export default function NovoProduto() {
 
   // Cálculos Financeiros
   const custosIngredientes = ingredientes.map((i) => {
-    if (i.unitCost < 0 || i.qty <= 0) return 0;
+    if (i.unitCost < 0) return 0;
 
     let cost = 0;
     if (i.type === 'unidade') {
       // UNIT: Custo fixo por unidade individual produzida
-      cost = i.unitCost * i.qty;
+      cost = i.unitCost * (i.qty || 0);
     } else if (i.type === 'lote') {
       // LOTE: Custo total do uso na receita dividido pelo rendimento
-      cost = (i.unitCost * i.qty) / Math.max(1, rendimento);
+      cost = (i.unitCost * (i.qty || 0)) / Math.max(1, rendimento);
     } else if (i.type === 'inteiro') {
-      // INTEIRO: (Preço da Embalagem * Quantas Embalagens) / Rendimento
-      const fullPrice = i.packagePrice && i.packagePrice > 0 ? i.packagePrice : (i.unitCost * (i.packageQty || 1));
-      cost = (fullPrice * i.qty) / Math.max(1, rendimento);
+      // INTEIRO: Valor cheio da embalagem / Rendimento
+      // Se não houver packagePrice, tentamos inferir do unitCost * packageQty
+      const fullPrice = i.packagePrice && i.packagePrice > 1 ? i.packagePrice : (i.unitCost * (i.packageQty || 1));
+      cost = fullPrice / Math.max(1, rendimento);
     }
     
     return cost;
@@ -807,9 +809,9 @@ export default function NovoProduto() {
                                   </div>
                                </div>
 
-                               <div className="col-span-2 space-y-1">
+                               <div className={ing.type === 'inteiro' ? 'hidden' : 'col-span-2 space-y-1'}>
                                   <label className="text-[8px] font-black text-primary/30 uppercase tracking-widest ml-1">
-                                     {ing.type === 'inteiro' ? 'Qtd (Emb)' : `Uso (${ing.unit})`}
+                                     Uso ({ing.unit})
                                   </label>
                                   <input 
                                      type="number"
@@ -819,14 +821,14 @@ export default function NovoProduto() {
                                   />
                                </div>
 
-                               <div className="col-span-3">
+                               <div className={ing.type === 'inteiro' ? 'col-span-5' : 'col-span-3'}>
                                   <div className="bg-secondary/5 rounded-2xl px-4 py-2 border border-secondary/10 flex justify-between items-center h-12">
                                      <div>
                                         <p className="text-[7px] font-black text-secondary/50 uppercase tracking-widest leading-none">
                                            {ing.type === 'inteiro' ? 'Preço Emb.' : 'Custo Unit.'}
                                         </p>
                                         <p className="text-sm font-black text-primary italic leading-tight">
-                                           R$ {(ing.type === 'inteiro' ? (ing.packagePrice || (ing.unitCost * (ing.packageQty || 1))) : itemCost).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                           R$ {(ing.type === 'inteiro' ? (ing.packagePrice && ing.packagePrice > 1 ? ing.packagePrice : (ing.unitCost * (ing.packageQty || 1))) : itemCost).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </p>
                                      </div>
                                      <div className="text-right">
