@@ -354,9 +354,9 @@ export default function NovoProduto() {
             }
           }
 
-          // Se mudou o tipo para 'inteiro', já puxa a quantidade da embalagem
+          // Se mudou o tipo para 'inteiro', a quantidade passa a ser o número de EMBALAGENS (default 1)
           if (field === "type" && value === "inteiro") {
-             updated.qty = updated.packageQty || 0;
+             updated.qty = 1;
           }
 
           return updated;
@@ -368,20 +368,19 @@ export default function NovoProduto() {
 
   // Cálculos Financeiros
   const custosIngredientes = ingredientes.map((i) => {
-    if (i.unitCost <= 0 || i.qty <= 0) return 0;
+    if (i.unitCost < 0 || i.qty <= 0) return 0;
 
     let cost = 0;
     if (i.type === 'unidade') {
-      // UNIT: Custo por produto individual
+      // UNIT: Custo fixo por unidade individual produzida
       cost = i.unitCost * i.qty;
     } else if (i.type === 'lote') {
-      // LOTE: Custo total dividido pelo rendimento
+      // LOTE: Custo total do uso na receita dividido pelo rendimento
       cost = (i.unitCost * i.qty) / Math.max(1, rendimento);
     } else if (i.type === 'inteiro') {
-      // INTEIRO: Valor cheio da embalagem dividido pelo rendimento
-      // Se tivermos o packagePrice salvo, usamos ele. Se não, usamos unitCost * qty
-      const fullPrice = i.packagePrice && i.packagePrice > 0 ? i.packagePrice : (i.unitCost * i.qty);
-      cost = fullPrice / Math.max(1, rendimento);
+      // INTEIRO: (Preço da Embalagem * Quantas Embalagens) / Rendimento
+      const fullPrice = i.packagePrice && i.packagePrice > 0 ? i.packagePrice : (i.unitCost * (i.packageQty || 1));
+      cost = (fullPrice * i.qty) / Math.max(1, rendimento);
     }
     
     return cost;
@@ -827,13 +826,13 @@ export default function NovoProduto() {
                                            {ing.type === 'inteiro' ? 'Preço Emb.' : 'Custo Unit.'}
                                         </p>
                                         <p className="text-sm font-black text-primary italic leading-tight">
-                                           R$ {(ing.type === 'inteiro' && ing.packagePrice ? ing.packagePrice : itemCost).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                           R$ {(ing.type === 'inteiro' ? (ing.packagePrice || (ing.unitCost * (ing.packageQty || 1))) : itemCost).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </p>
                                      </div>
                                      <div className="text-right">
                                         <p className="text-[7px] font-black text-primary/20 uppercase tracking-widest leading-none">Total Item</p>
                                         <p className="text-[10px] font-bold text-primary/30 leading-tight">
-                                           R$ {(itemCost * (ing.type === 'unidade' ? rendimento : rendimento)).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                           R$ {(itemCost * rendimento).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </p>
                                      </div>
                                   </div>
