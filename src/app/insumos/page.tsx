@@ -73,12 +73,8 @@ export default function GestaoInsumos() {
     setEditingInsumo(insumo);
     setName(insumo.name);
     
-    // Tentativa de reverter custo base para algo visual (aproximado)
-    // Se for 'g' ou 'ml', a unidade base é 1. Se for 'un', também.
-    // Mas o usuário cadastrou como initialQty e initialPrice.
-    // Como não salvamos a Qty original separadamente no DB (apenas o custo unitário), 
-    // vamos assumir que o usuário quer editar o custo unitário diretamente ou re-inserir.
-    // Para facilitar, vamos carregar o custo unitário como price e 1 como qty.
+    // Para edição, carregamos o custo unitário atual como o preço e a quantidade como 1
+    // Isso garante que se o usuário não mexer em nada, o valor se mantenha.
     setInitialPrice(insumo.pricePerBaseUnit);
     setInitialQty(1);
     setUnit(insumo.baseUnit as any);
@@ -92,7 +88,7 @@ export default function GestaoInsumos() {
     let baseQty = initialQty;
     if (unit === "kg" || unit === "L") baseQty = initialQty * 1000;
     
-    const pricePerBaseUnit = initialPrice / Math.max(1, baseQty);
+    const pricePerBaseUnit = initialPrice / Math.max(0.000001, baseQty);
 
     const payload = {
       nome: name,
@@ -374,7 +370,7 @@ export default function GestaoInsumos() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-primary/40 uppercase tracking-widest ml-1">
-                      {editingInsumo ? "Custo Base" : "Valor inicial"}
+                      {editingInsumo ? "Preço p/ Unidade ou Peso" : "Valor inicial"}
                     </label>
                     <input 
                       type="number"
