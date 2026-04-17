@@ -227,6 +227,24 @@ export default function GestaoInsumos() {
              </div>
 
             <div className="flex items-center gap-3">
+              <button 
+                onClick={() => {
+                  const content = "nome,preco,quantidade,unidade\nChocolate Callebaut,150.00,1,kg\nLeite Moça,8.50,395,g\nCreme de Leite,35.00,1,L\nEmbalagem P,1.20,1,un";
+                  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+                  const link = document.createElement("a");
+                  const url = URL.createObjectURL(blob);
+                  link.setAttribute("href", url);
+                  link.setAttribute("download", "modelo_insumos.csv");
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
+                className="px-6 py-4 bg-primary/5 text-primary rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-primary/10 transition-all flex items-center gap-3"
+              >
+                <span className="material-symbols-outlined text-sm">download</span>
+                Modelo
+              </button>
+
               <label className="cursor-pointer px-6 py-4 bg-primary/5 text-primary rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-primary/10 transition-all flex items-center gap-3">
                 <span className="material-symbols-outlined text-sm">table_view</span>
                 Importar Planilha
