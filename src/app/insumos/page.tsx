@@ -93,10 +93,7 @@ export default function GestaoInsumos() {
     const payload = {
       nome: name,
       unidade: (unit === "kg" || unit === "g") ? "g" : (unit === "L" || unit === "ml" ? "ml" : "un"),
-      custo_unitario: pricePerBaseUnit,
-      latest_price: initialPrice,
-      latest_qty: initialQty,
-      latest_unit: unit
+      custo_unitario: pricePerBaseUnit
     };
 
     if (editingInsumo) {

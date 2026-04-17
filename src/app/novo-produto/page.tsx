@@ -63,8 +63,9 @@ export default function NovoProduto() {
         name: d.nome,
         unit: d.unidade,
         unitCost: Number(d.custo_unitario),
-        latestPrice: Number(d.latest_price || 0),
-        latestQty: Number(d.latest_qty || 0)
+        // Fallbacks para colunas que podem não existir no banco
+        latestPrice: Number(d.latest_price || d.custo_unitario || 0),
+        latestQty: Number(d.latest_qty || 1)
       })));
     };
     
@@ -380,8 +381,9 @@ export default function NovoProduto() {
       cost = (i.unitCost * (i.qty || 0)) / Math.max(1, rendimento);
     } else if (i.type === 'inteiro') {
       // INTEIRO: Valor cheio da embalagem / Rendimento
-      // Se não houver packagePrice, tentamos inferir do unitCost * packageQty
-      const fullPrice = i.packagePrice && i.packagePrice > 1 ? i.packagePrice : (i.unitCost * (i.packageQty || 1));
+      // Se packagePrice < 1, provavelmente é o custo unitário (mismatch de schema)
+      // Nesse caso, tentamos multiplicar pelo packageQty (se disponível)
+      const fullPrice = (i.packagePrice && i.packagePrice > 1) ? i.packagePrice : (i.unitCost * (i.packageQty || 1));
       cost = fullPrice / Math.max(1, rendimento);
     }
     
