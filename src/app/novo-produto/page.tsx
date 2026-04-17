@@ -13,8 +13,9 @@ interface RecipeIngredient {
   type: 'lote' | 'unidade' | 'inteiro';
   qty: number;
   unit: string;
-  unitCost: number; // Custo unitário do insumo no momento da adição
-  packageQty?: number; // Quantidade da embalagem para modo 'inteiro'
+  unitCost: number; // Preço por grama/unidade
+  packagePrice?: number; // Preço da embalagem fechada
+  packageQty?: number; // Quantidade na embalagem fechada
 }
 
 export default function NovoProduto() {
@@ -61,7 +62,9 @@ export default function NovoProduto() {
         id: d.id,
         name: d.nome,
         unit: d.unidade,
-        unitCost: Number(d.custo_unitario)
+        unitCost: Number(d.custo_unitario),
+        latestPrice: Number(d.latest_price || 0),
+        latestQty: Number(d.latest_qty || 0)
       })));
     };
     
@@ -346,8 +349,16 @@ export default function NovoProduto() {
               updated.insumoId = matched.id;
               updated.unitCost = matched.unitCost;
               updated.unit = matched.unit;
+              updated.packagePrice = matched.latestPrice;
+              updated.packageQty = matched.latestQty;
             }
           }
+
+          // Se mudou o tipo para 'inteiro', já puxa a quantidade da embalagem
+          if (field === "type" && value === "inteiro") {
+             updated.qty = updated.packageQty || 0;
+          }
+
           return updated;
         }
         return i;
@@ -361,24 +372,16 @@ export default function NovoProduto() {
 
     let cost = 0;
     if (i.type === 'unidade') {
-      // Unidade: Custo direto por quantidade usada
+      // UNIT: Custo por produto individual
       cost = i.unitCost * i.qty;
     } else if (i.type === 'lote') {
-      // Lote: Custo total do uso na receita dividido pelo rendimento
+      // LOTE: Custo total dividido pelo rendimento
       cost = (i.unitCost * i.qty) / Math.max(1, rendimento);
     } else if (i.type === 'inteiro') {
-      // Inteiro: O usuário entra com a quantidade de "unidades inteiras" (ex: 1 lata)
-      // Estamos assumindo que a embalagem padrão foi o que definiu o custo unitário.
-      // Se não temos a Qtd da Embalagem separada, o usuário usa 'Lote' para pesos.
-      // Mas podemos tratar 'Inteiro' como um multiplicador direto se o unitCost for por 'un'.
-      // Se for por 'g', precisaríamos saber o peso da lata.
-      // Para simplificar e atender o pedido: 'Inteiro' entra valor todo e divide pelo rendimento.
-      // Vamos assumir que se ele seleciona 'Inteiro', o qty é a quantidade de EMBALAGENS.
-      // Mas como não temos o peso da embalagem salvo de forma fácil no momento nas interfaces,
-      // Se for 'Inteiro', vamos considerar que o unitCost * qty_embalagem (que ele cadastrou) é o custo.
-      // Por enquanto, faremos (i.unitCost * i.qty) / rendimento, 
-      // mas instruir que o calculo de Inteiro assume que o preco cadastrado era daquela unidade.
-      cost = (i.unitCost * i.qty) / Math.max(1, rendimento);
+      // INTEIRO: Valor cheio da embalagem dividido pelo rendimento
+      // Se tivermos o packagePrice salvo, usamos ele. Se não, usamos unitCost * qty
+      const fullPrice = i.packagePrice && i.packagePrice > 0 ? i.packagePrice : (i.unitCost * i.qty);
+      cost = fullPrice / Math.max(1, rendimento);
     }
     
     return cost;
@@ -820,19 +823,19 @@ export default function NovoProduto() {
                                <div className="col-span-3">
                                   <div className="bg-secondary/5 rounded-2xl px-4 py-2 border border-secondary/10 flex justify-between items-center h-12">
                                      <div>
-                                        <p className="text-[7px] font-black text-secondary/50 uppercase tracking-widest leading-none">Custo Unitário</p>
+                                        <p className="text-[7px] font-black text-secondary/50 uppercase tracking-widest leading-none">
+                                           {ing.type === 'inteiro' ? 'Preço Emb.' : 'Custo Unit.'}
+                                        </p>
                                         <p className="text-sm font-black text-primary italic leading-tight">
-                                           R$ {itemCost.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                           R$ {(ing.type === 'inteiro' && ing.packagePrice ? ing.packagePrice : itemCost).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </p>
                                      </div>
-                                     {ing.type !== 'unidade' && (
-                                        <div className="text-right">
-                                           <p className="text-[7px] font-black text-primary/20 uppercase tracking-widest leading-none">Total Item</p>
-                                           <p className="text-[10px] font-bold text-primary/30 leading-tight">
-                                              R$ {(itemCost * rendimento).toFixed(2)}
-                                           </p>
-                                        </div>
-                                     )}
+                                     <div className="text-right">
+                                        <p className="text-[7px] font-black text-primary/20 uppercase tracking-widest leading-none">Total Item</p>
+                                        <p className="text-[10px] font-bold text-primary/30 leading-tight">
+                                           R$ {(itemCost * (ing.type === 'unidade' ? rendimento : rendimento)).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </p>
+                                     </div>
                                   </div>
                                </div>
 
