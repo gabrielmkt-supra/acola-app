@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -18,7 +18,7 @@ interface RecipeIngredient {
   packageQty?: number; // Quantidade na embalagem fechada
 }
 
-export default function NovoProduto() {
+function NovoProdutoContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
@@ -1272,6 +1272,18 @@ export default function NovoProduto() {
         </AnimatePresence>
       </div>
     </div>
+  );
+}
+
+export default function NovoProduto() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen bg-background text-primary/30 font-black uppercase tracking-widest">
+        Carregando Calculadora...
+      </div>
+    }>
+      <NovoProdutoContent />
+    </Suspense>
   );
 }
 
