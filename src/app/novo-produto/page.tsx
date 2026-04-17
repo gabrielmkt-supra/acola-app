@@ -23,7 +23,7 @@ function NovoProdutoContent() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
 
-  const [viewMode, setViewMode] = useState<"selection" | "new" | "restock" | "import">("selection");
+  const [viewMode, setViewMode] = useState<"selection" | "new" | "restock" | "import" | "loading">("loading");
   const [nome, setNome] = useState("");
   const [categoria, setCategoria] = useState("Trufa");
   const [precoVenda, setPrecoVenda] = useState(0);
@@ -51,13 +51,12 @@ function NovoProdutoContent() {
     }));
   };
 
-  // Carregar dados para edição
+  // Determinar modo inicial e carregar dados para edição
   useEffect(() => {
     if (editId) {
       const loadEditData = async () => {
         setIsSaving(true);
         try {
-          // 1. Buscar produto no banco
           const { data: prod, error } = await supabase
             .from('products')
             .select('*')
@@ -73,22 +72,28 @@ function NovoProdutoContent() {
             setPrecoVenda(Number(prod.price || 0));
             setEstoqueInicial(Number(prod.stock || 0));
             setFoto(prod.image || "");
-            setViewMode("new"); // Abre direto na calculadora
+            setViewMode("new");
 
-            // 2. Tentar carregar receita (Banco de dados ou LocalStorage fallback)
+            // 2. Tentar carregar receita
             if (prod.recipe) {
               const recipeData = typeof prod.recipe === 'string' ? JSON.parse(prod.recipe) : prod.recipe;
-              const normalizedItems = transformLegacyRecipe(recipeData.items || []);
-              setIngredientes(normalizedItems);
+              setIngredientes(transformLegacyRecipe(recipeData.items || []));
               setRendimento(recipeData.rendimento || 1);
             } else {
               const savedReceitas = localStorage.getItem("acola_receitas");
               if (savedReceitas) {
                 const all = JSON.parse(savedReceitas);
-                const localData = all[editId];
+                // Tenta pelo ID primeiro
+                let localData = all[editId];
+                
+                // PLANO B: Se não achar pelo ID, tenta pelo Nome do Produto (útil para transições)
+                if (!localData) {
+                  const entryByName = Object.values(all).find((r: any) => r.productName === prod.name || r.name === prod.name);
+                  if (entryByName) localData = entryByName;
+                }
+
                 if (localData) {
-                  const normalizedItems = transformLegacyRecipe(localData.items || []);
-                  setIngredientes(normalizedItems);
+                  setIngredientes(transformLegacyRecipe(localData.items || []));
                   setRendimento(localData.rendimento || 1);
                 }
               }
@@ -97,11 +102,14 @@ function NovoProdutoContent() {
         } catch (err) {
           console.error("Erro ao carregar produto para edição:", err);
           addToast("Não foi possível carregar o produto.", "alert");
+          setViewMode("selection");
         } finally {
           setIsSaving(false);
         }
       };
       loadEditData();
+    } else {
+      setViewMode("selection");
     }
   }, [editId]);
 
@@ -406,16 +414,17 @@ function NovoProdutoContent() {
            
            // Tentar salvar apenas os campos básicos primeiro para garantir persistência do produto
            const { recipe, ...basicPayload } = productPayload;
-           const { error: retryError } = editId 
-            ? await supabase.from('products').update(basicPayload).eq('id', editId)
+           const { data: retryData, error: retryError } = editId 
+            ? await supabase.from('products').update(basicPayload).eq('id', editId).select()
             : await supabase.from('products').insert([basicPayload]).select();
            
            if (retryError) throw retryError;
            
            // Agora salvar ingredientes no LocalStorage (usando ID do produto gerado ou editId)
-           const actualId = editId; // Se for novo, precisaremos do retorno do select acima para pegar o ID real
+           const actualId = editId || retryData?.[0]?.id;
            if (actualId) {
-             all[actualId] = recipePayload;
+             // Salva com nome do produto também para facilitar fallback futuro
+             all[actualId] = { ...recipePayload, productName: nome };
              localStorage.setItem("acola_receitas", JSON.stringify(all));
            }
         } else {
@@ -634,6 +643,14 @@ function NovoProdutoContent() {
 
       <main className="flex-1 overflow-y-auto p-4 md:p-8">
         <div className="max-w-6xl mx-auto">
+          {/* MODO LOADING */}
+          {viewMode === "loading" && (
+            <div className="flex flex-col items-center justify-center py-40 gap-4">
+              <div className="w-12 h-12 border-4 border-secondary/20 border-t-secondary rounded-full animate-spin" />
+              <p className="text-[10px] font-black text-primary/30 uppercase tracking-[0.3em]">Preparando Ambiente...</p>
+            </div>
+          )}
+
           {/* MODO SELECIONAR */}
           {viewMode === "selection" && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 py-12">
