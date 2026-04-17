@@ -304,7 +304,7 @@ export default function GestaoInsumos() {
                     <div className="bg-background/50 p-4 rounded-2xl border border-primary/5">
                       <p className="text-[9px] font-black text-primary/20 uppercase tracking-widest mb-1">Custo por {ins.baseUnit}</p>
                       <p className="text-xl font-black text-secondary italic">
-                        R$ {ins.pricePerBaseUnit.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}
+                        R$ {ins.pricePerBaseUnit.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                     </div>
 
@@ -418,7 +418,7 @@ export default function GestaoInsumos() {
                 <div className="bg-primary/5 p-4 rounded-3xl border border-primary/5 text-center">
                    <p className="text-[9px] font-black text-primary/30 uppercase tracking-[0.2em] mb-1">Custo Projetado</p>
                    <p className="text-xl font-black italic">
-                     R$ {(initialPrice / (unit === 'kg' || unit === 'L' ? initialQty * 1000 : initialQty || 1)).toLocaleString("pt-BR", { minimumFractionDigits: 4 })}
+                     R$ {(initialPrice / (unit === 'kg' || unit === 'L' ? initialQty * 1000 : initialQty || 1)).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                      <span className="text-[10px] text-primary/20 ml-2 uppercase">por { (unit === 'kg' || unit === 'g' ? 'g' : unit === 'L' || unit === 'ml' ? 'ml' : 'un') }</span>
                    </p>
                 </div>
