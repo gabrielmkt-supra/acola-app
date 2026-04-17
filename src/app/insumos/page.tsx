@@ -34,14 +34,16 @@ export default function GestaoInsumos() {
   const [initialQty, setInitialQty] = useState(0);
   const [unit, setUnit] = useState<"g" | "kg" | "ml" | "L" | "un">("g");
 
+  const fetchInsumos = async () => {
+    const { data } = await supabase.from('insumos').select('*').order('nome');
+    if (data) setInsumos(data);
+  };
+
   useEffect(() => {
-    const saved = localStorage.getItem("acola_insumos");
-    if (saved) {
-      setInsumos(JSON.parse(saved));
-    }
+    fetchInsumos();
   }, []);
 
-  const handleSaveInsumo = (e: React.FormEvent) => {
+  const handleSaveInsumo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || initialPrice <= 0 || initialQty <= 0) return;
 
@@ -49,22 +51,19 @@ export default function GestaoInsumos() {
     if (unit === "kg" || unit === "L") baseQty = initialQty * 1000;
     
     const pricePerBaseUnit = initialPrice / Math.max(1, baseQty);
-    const baseUnit = (unit === "kg" || unit === "g") ? "g" : (unit === "L" || unit === "ml") ? "ml" : "un";
 
-    const newInsumo: Insumo = {
-      name,
-      pricePerBaseUnit,
-      baseUnit,
-      latestPrice: initialPrice,
-      latestQty: initialQty,
-      latestUnit: unit,
-      lastPurchaseDate: new Date().toISOString(),
-      createdAt: new Date().toISOString()
-    };
+    const { error } = await supabase.from('insumos').insert([{
+      nome: name,
+      unidade: unit,
+      custo_unitario: pricePerBaseUnit
+    }]);
 
-    const updated = [...insumos, newInsumo];
-    setInsumos(updated);
-    localStorage.setItem("acola_insumos", JSON.stringify(updated));
+    if (error) {
+      alert("Erro ao salvar insumo: " + error.message);
+      return;
+    }
+
+    fetchInsumos();
 
     // Reset
     setName("");
@@ -73,11 +72,19 @@ export default function GestaoInsumos() {
     setIsModalOpen(false);
   };
 
-  const handleDelete = (nameToDelete: string) => {
+  const handleDelete = async (nameToDelete: string) => {
+    const insumo = insumos.find(i => i.nome === nameToDelete);
+    if (!insumo) return;
+
     if (!confirm(`Excluir o insumo "${nameToDelete}"? Isso pode afetar receitas vinculadas.`)) return;
-    const updated = insumos.filter(i => i.name !== nameToDelete);
-    setInsumos(updated);
-    localStorage.setItem("acola_insumos", JSON.stringify(updated));
+    
+    const { error } = await supabase.from('insumos').delete().eq('id', (insumo as any).id || "");
+    if (error) {
+      // Se não tiver ID (veio de sync antigo), tenta por nome
+      await supabase.from('insumos').delete().eq('nome', nameToDelete);
+    }
+    
+    setInsumos(insumos.filter(i => i.name !== nameToDelete));
   };
 
   const filteredInsumos = insumos.filter(i => 

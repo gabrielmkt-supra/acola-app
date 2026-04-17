@@ -39,33 +39,42 @@ export default function Receitas() {
   
   // Load data
   useEffect(() => {
-    const savedProducts = localStorage.getItem("acola_estoque");
-    if (savedProducts) setProducts(JSON.parse(savedProducts));
+    const fetchMasterData = async () => {
+      const { data: prods } = await supabase.from('products').select('*');
+      if (prods) setProducts(prods);
 
-    const savedInsumos = localStorage.getItem("acola_insumos");
-    if (savedInsumos) setInsumos(JSON.parse(savedInsumos));
+      const { data: insData } = await supabase.from('insumos').select('*');
+      if (insData) setInsumos(insData.map(i => ({
+        name: i.nome,
+        pricePerBaseUnit: Number(i.custo_unitario),
+        baseUnit: i.unidade as any,
+        latestPrice: 0, // Não usado diretamente no cálculo além de 'inteiro'
+        latestQty: 1,
+        vendor: "Supabase"
+      })));
 
-    const savedReceitas = localStorage.getItem("acola_receitas");
-    if (savedReceitas && selectedProductId) {
-      const allReceitas = JSON.parse(savedReceitas);
-      const data = allReceitas[selectedProductId];
-      
-      if (Array.isArray(data)) {
-        // Compatibilidade com dados antigos (apenas array)
-        setCurrentRecipe(data);
-        setRendimento(1);
-      } else if (data) {
-        // Novo formato (objeto com items e rendimento)
-        setCurrentRecipe(data.items || []);
-        setRendimento(data.rendimento || 1);
+      const savedReceitas = localStorage.getItem("acola_receitas");
+      if (savedReceitas && selectedProductId) {
+        const allReceitas = JSON.parse(savedReceitas);
+        const data = allReceitas[selectedProductId];
+        
+        if (Array.isArray(data)) {
+          setCurrentRecipe(data);
+          setRendimento(1);
+        } else if (data) {
+          setCurrentRecipe(data.items || []);
+          setRendimento(data.rendimento || 1);
+        } else {
+          setCurrentRecipe([]);
+          setRendimento(1);
+        }
       } else {
         setCurrentRecipe([]);
         setRendimento(1);
       }
-    } else {
-      setCurrentRecipe([]);
-      setRendimento(1);
-    }
+    };
+
+    fetchMasterData();
   }, [selectedProductId]);
 
   const addIngredient = () => {

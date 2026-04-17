@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 
 interface Movement {
   id: string;
@@ -23,15 +24,37 @@ export default function Movimentacoes() {
   const [filter, setFilter] = useState<"Todos" | "Entrada" | "Saída" | "Ajuste">("Todos");
   const [activeTab, setActiveTab] = useState<"Fluxo" | "Pedidos" | "Pendências">("Fluxo");
 
+  const fetchData = async () => {
+    try {
+      // 1. Histórico de Movimentações
+      const { data: movements } = await supabase.from('inventory_movements').select('*').order('timestamp', { ascending: false });
+      if (movements) setHistory(movements.map(m => ({
+        id: m.id,
+        timestamp: m.timestamp,
+        productId: m.product_id,
+        productName: m.product_name,
+        type: m.type,
+        amount: m.amount,
+        previousStock: m.previous_stock,
+        finalStock: m.final_stock,
+        note: m.note
+      })));
+
+      // 2. Vendas (Orders)
+      const { data: sales } = await supabase.from('orders').select('*').order('timestamp', { ascending: false });
+      if (sales) setVendas(sales);
+
+      // 3. Inventário (Products) - Para estornos
+      const { data: prods } = await supabase.from('products').select('*');
+      if (prods) setInventory(prods);
+
+    } catch (error) {
+      console.error("Erro ao carregar dados:", error);
+    }
+  };
+
   useEffect(() => {
-    const savedHistory = localStorage.getItem("acola_historico");
-    if (savedHistory) setHistory(JSON.parse(savedHistory));
-
-    const savedSales = localStorage.getItem("acola_vendas");
-    if (savedSales) setVendas(JSON.parse(savedSales));
-
-    const savedInventory = localStorage.getItem("acola_estoque");
-    if (savedInventory) setInventory(JSON.parse(savedInventory));
+    fetchData();
 
     // Suporte a abertura direta via URL (ex: ?tab=Pendências)
     const params = new URLSearchParams(window.location.search);
@@ -41,57 +64,64 @@ export default function Movimentacoes() {
     }
   }, []);
 
-  const handleCancelOrder = (orderId: string) => {
+  const handleCancelOrder = async (orderId: string) => {
     if (!confirm("⚠️ ATENÇÃO: Deseja realmente estornar esta venda?\n\nOs produtos serão devolvidos ao estoque e a venda será excluída.")) return;
 
     const order = vendas.find(v => v.id === orderId);
     if (!order) return;
 
-    const updatedInventory = [...inventory];
-    const newMovements: any[] = [];
+    try {
+      // 1. Devolver itens ao estoque no Supabase
+      for (const item of order.items) {
+        const invProduct = inventory.find(p => p.id === item.id);
+        if (invProduct) {
+          const previousStock = Number(invProduct.stock);
+          const newStock = previousStock + Number(item.quantity);
 
-    order.items.forEach((item: any) => {
-      const invProduct = updatedInventory.find(p => p.id === item.id);
-      if (invProduct) {
-        const previousStock = invProduct.stock;
-        invProduct.stock += item.quantity;
-        
-        newMovements.push({
-          id: `ESTORNO-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-          timestamp: new Date().toISOString(),
-          productId: item.id,
-          productName: item.name,
-          type: "Ajuste",
-          amount: item.quantity,
-          previousStock,
-          finalStock: invProduct.stock,
-          note: `ESTORNO: Pedido ${orderId.split('-').pop()}`
-        });
+          // Atualizar Produto
+          await supabase.from('products').update({ stock: newStock }).eq('id', item.id);
+
+          // Registrar Movimentação
+          await supabase.from('inventory_movements').insert([{
+            product_id: item.id,
+            product_name: item.name,
+            type: "Ajuste",
+            amount: item.quantity,
+            previous_stock: previousStock,
+            final_stock: newStock,
+            note: `ESTORNO: Pedido ${orderId.split('-').pop()}`
+          }]);
+        }
       }
-    });
 
-    const updatedSales = vendas.filter(v => v.id !== orderId);
-    const updatedHistory = [...newMovements, ...history];
+      // 2. Excluir ou Anular Venda no Supabase
+      const { error: deleteError } = await supabase.from('orders').delete().eq('id', orderId);
+      if (deleteError) throw deleteError;
 
-    localStorage.setItem("acola_estoque", JSON.stringify(updatedInventory));
-    localStorage.setItem("acola_vendas", JSON.stringify(updatedSales));
-    localStorage.setItem("acola_historico", JSON.stringify(updatedHistory));
-
-    setInventory(updatedInventory);
-    setVendas(updatedSales);
-    setHistory(updatedHistory);
-    alert("Estorno realizado com sucesso!");
+      alert("Estorno realizado com sucesso!");
+      fetchData(); // Recarregar tudo
+    } catch (error) {
+      console.error("Erro no estorno:", error);
+      alert("Erro técnico ao realizar estorno.");
+    }
   };
 
-  const handleMarkAsPaid = (orderId: string) => {
+  const handleMarkAsPaid = async (orderId: string) => {
     if (!confirm("Confirmar recebimento deste pedido? O valor entrará no faturamento oficial.")) return;
 
-    const updatedSales = vendas.map(v => 
-      v.id === orderId ? { ...v, paymentStatus: "pago" } : v
-    );
+    const { error } = await supabase
+      .from('orders')
+      .update({ payment_status: "pago" }) // O usuário usou payment_status no script consolidado
+      .eq('id', orderId);
 
-    localStorage.setItem("acola_vendas", JSON.stringify(updatedSales));
-    setVendas(updatedSales);
+    if (error) {
+      alert("Erro ao marcar como pago: " + error.message);
+      return;
+    }
+
+    setVendas(vendas.map(v => 
+      v.id === orderId ? { ...v, payment_status: "pago" } : v
+    ));
     alert("Pagamento registrado com sucesso!");
   };
 
@@ -101,13 +131,13 @@ export default function Movimentacoes() {
 
   // Agrupamento de Pendências por Cliente
   const pendenciasPorCliente = vendas
-    .filter(v => v.paymentStatus === "pendente")
+    .filter(v => v.payment_status === "pendente")
     .reduce((acc: any, curr) => {
-      const clientName = curr.client.name;
+      const clientName = curr.client_name; // Schema consolidado usa client_name
       if (!acc[clientName]) {
         acc[clientName] = { 
           name: clientName, 
-          phone: curr.client.phone, 
+          phone: curr.client_phone, 
           total: 0, 
           pedidos: [] 
         };
@@ -256,8 +286,8 @@ export default function Movimentacoes() {
                            <p className="text-[9px] font-bold text-primary/30 uppercase mt-0.5">{formatDate(venda.timestamp)}</p>
                         </div>
                         <div className="col-span-3">
-                           <p className="text-sm font-black text-primary truncate leading-none mb-1">{venda.client.name}</p>
-                           <p className="text-[9px] font-bold text-primary/40 font-mono italic">{venda.client.phone || "SEM TELEFONE"}</p>
+                           <p className="text-sm font-black text-primary truncate leading-none mb-1">{venda.client_name}</p>
+                           <p className="text-[9px] font-bold text-primary/40 font-mono italic">{venda.client_phone || "SEM TELEFONE"}</p>
                         </div>
                         <div className="col-span-4 flex flex-wrap gap-1">
                           {venda.items.map((item: any, i: number) => (
@@ -268,9 +298,9 @@ export default function Movimentacoes() {
                         </div>
                         <div className="col-span-3 text-right flex items-center justify-end gap-6">
                            <div className="flex flex-col items-end">
-                              <p className="text-lg font-black text-primary italic">R$ {venda.total.toFixed(2).replace(".", ",")}</p>
-                              <span className={`text-[9px] font-black uppercase tracking-widest ${venda.paymentStatus === 'pendente' ? 'text-secondary' : 'text-green-600'}`}>
-                                {venda.paymentStatus === 'pendente' ? 'Pendente' : 'Pago'}
+                              <p className="text-lg font-black text-primary italic">R$ {Number(venda.total || 0).toFixed(2).replace(".", ",")}</p>
+                              <span className={`text-[9px] font-black uppercase tracking-widest ${venda.payment_status === 'pendente' ? 'text-secondary' : 'text-green-600'}`}>
+                                {venda.payment_status === 'pendente' ? 'Pendente' : 'Pago'}
                               </span>
                            </div>
                            <button onClick={() => handleCancelOrder(venda.id)} className="w-10 h-10 rounded-xl bg-red-50 text-red-400 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center shadow-sm hover:scale-110">
@@ -302,7 +332,7 @@ export default function Movimentacoes() {
                          </div>
                          <div className="text-right">
                             <p className="text-[10px] font-black text-secondary uppercase tracking-widest mb-1">Dívida Total</p>
-                            <p className="text-xl font-black text-primary italic">R$ {cliente.total.toFixed(2).replace(".", ",")}</p>
+                            <p className="text-xl font-black text-primary italic">R$ {Number(cliente.total || 0).toFixed(2).replace(".", ",")}</p>
                          </div>
                       </div>
                       <div className="p-6 space-y-4">

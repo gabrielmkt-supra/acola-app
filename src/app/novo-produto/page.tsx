@@ -47,11 +47,15 @@ export default function NovoProduto() {
   const [importMode, setImportMode] = useState<"merge" | "replace">("merge");
   const importFileRef = useRef<HTMLInputElement>(null);
 
-  // Carregar inventário para o modo reposição
+  // Carregar inventário para o modo reposição do Supabase
   useEffect(() => {
-    const savedData = localStorage.getItem("acola_estoque");
-    if (savedData) {
-      setInventory(JSON.parse(savedData));
+    const fetchInventory = async () => {
+      const { data } = await supabase.from('products').select('*').order('name');
+      if (data) setInventory(data);
+    };
+    
+    if (viewMode === "restock") {
+      fetchInventory();
     }
   }, [viewMode]);
 
@@ -261,7 +265,7 @@ export default function NovoProduto() {
   };
   // ─────────────────────────────────────────────────────────────
 
-  // Lógica de Salvar no LocalStorage (Mock Local)
+  // Lógica de Salvar no Supabase
   const handleSave = async () => {
     if (!nome || precoVenda <= 0) {
       alert("Por favor, preencha o nome e o preço de venda.");
@@ -271,27 +275,21 @@ export default function NovoProduto() {
     setIsSaving(true);
     
     try {
-      // 1. Preparar objeto do produto consolidado
-      const newProduct = {
-        id: `PROD-${Date.now().toString().slice(-6)}`,
-        name: nome,
-        category: categoria,
-        subtype: categoria === "Geladinho" ? subtipo : "",
-        cost: `R$ ${custoTotal.toFixed(2)}`,
-        price: `R$ ${precoVenda.toFixed(2)}`,
-        stock: estoqueInicial,
-        percentage: 100, // Inicialmente 100% do estoque
-        status: estoqueInicial < 20 ? "ESTOQUE BAIXO" : "SAUDÁVEL",
-        image: foto || `https://ui-avatars.com/api/?name=${encodeURIComponent(nome)}&background=2a2a2a&color=c9a84c&bold=true&size=128`,
-        created_at: new Date().toISOString()
-      };
+      // 1. Preparar objeto do produto consolidado para o Supabase
+      const { error } = await supabase
+        .from('products')
+        .insert([{
+          name: nome,
+          category: categoria,
+          subtype: categoria === "Geladinho" ? subtipo : "",
+          cost: Number(custoTotal),
+          price: Number(precoVenda),
+          stock: Number(estoqueInicial),
+          image: foto || `https://ui-avatars.com/api/?name=${encodeURIComponent(nome)}&background=2a2a2a&color=c9a84c&bold=true&size=128`,
+          status: 'active'
+        }]);
 
-      // 2. Persistência Local
-      const existingData = localStorage.getItem("acola_estoque");
-      const currentInventory = existingData ? JSON.parse(existingData) : [];
-      const updatedInventory = [newProduct, ...currentInventory];
-      
-      localStorage.setItem("acola_estoque", JSON.stringify(updatedInventory));
+      if (error) throw error;
 
       addToast("Produto cadastrado com sucesso!", "success");
 
@@ -300,12 +298,8 @@ export default function NovoProduto() {
 
       router.push("/");
     } catch (error: any) {
-      console.error("Erro ao salvar localmente:", error);
-      if (error.name === 'QuotaExceededError' || error.message.includes('quota')) {
-        addToast("Espaço cheio! Apague produtos antigos ou use a nuvem.", "alert");
-      } else {
-        addToast("Erro ao salvar o produto.", "alert");
-      }
+      console.error("Erro ao salvar no Supabase:", error);
+      addToast("Erro ao salvar o produto no banco de dados.", "alert");
     } finally {
       setIsSaving(false);
     }
@@ -384,7 +378,7 @@ export default function NovoProduto() {
     console.log(`Estoque atualizado: ${productId} +${amount}`);
   };
 
-  const handleFinalizeRestock = () => {
+  const handleFinalizeRestock = async () => {
     const pendingUpdates = Object.entries(restockAmounts).filter(([_, amount]) => amount >= 0);
     
     if (pendingUpdates.length === 0) {
@@ -392,50 +386,53 @@ export default function NovoProduto() {
       return;
     }
 
-    // 1. Criar registros de histórico
-    const savedHistory = localStorage.getItem("acola_historico");
-    const history = savedHistory ? JSON.parse(savedHistory) : [];
-    const newMovements: any[] = [];
+    setIsSaving(true);
 
-    // 2. Aplicar todos os aumentos/ajustes
-    let updatedInventory = [...inventory];
-    pendingUpdates.forEach(([id, amount]) => {
-      const item = updatedInventory.find(i => i.id === id);
-      if (!item) return;
+    try {
+      for (const [id, amount] of pendingUpdates) {
+        const item = inventory.find(i => i.id === id);
+        if (!item) continue;
 
-      const previousStock = Number(item.stock);
-      let newStock = previousStock;
+        const previousStock = Number(item.stock);
+        let newStock = previousStock;
 
-      if (isAdjustmentMode) {
-        newStock = amount;
-      } else {
-        if (amount <= 0) return;
-        newStock = previousStock + amount;
+        if (isAdjustmentMode) {
+          newStock = amount;
+        } else {
+          if (amount <= 0) continue;
+          newStock = previousStock + amount;
+        }
+
+        if (newStock !== previousStock) {
+          // 1. Atualizar estoque no Supabase
+          const { error: updateError } = await supabase
+            .from('products')
+            .update({ stock: newStock })
+            .eq('id', id);
+
+          if (updateError) throw updateError;
+
+          // 2. Registrar movimentação
+          await supabase.from('inventory_movements').insert([{
+            product_id: id,
+            product_name: item.name,
+            type: isAdjustmentMode ? "Ajuste" : "Entrada",
+            amount: isAdjustmentMode ? (newStock - previousStock) : amount,
+            previous_stock: previousStock,
+            final_stock: newStock,
+            note: isAdjustmentMode ? "AJUSTE MANUAL" : "REPOSIÇÃO DE ESTOQUE"
+          }]);
+        }
       }
 
-      // Só registra se houve mudança real
-      if (newStock !== previousStock) {
-        newMovements.push({
-          id: `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-          timestamp: new Date().toISOString(),
-          productId: id,
-          productName: item.name,
-          type: isAdjustmentMode ? "Ajuste" : "Entrada",
-          amount: isAdjustmentMode ? (newStock - previousStock) : amount,
-          previousStock,
-          finalStock: newStock
-        });
-
-        updatedInventory = updatedInventory.map(i => 
-          i.id === id ? { ...i, stock: newStock, status: newStock < 20 ? "ESTOQUE BAIXO" : "SAUDÁVEL" } : i
-        );
-      }
-    });
-
-    // 3. Persistir e Redirecionar
-    localStorage.setItem("acola_estoque", JSON.stringify(updatedInventory));
-    localStorage.setItem("acola_historico", JSON.stringify([...newMovements, ...history]));
-    router.push("/");
+      addToast("Estoque atualizado com sucesso!", "success");
+      router.push("/");
+    } catch (error: any) {
+      console.error("Erro na reposição:", error);
+      addToast("Erro ao atualizar o estoque no servidor.", "alert");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 // Utility for conditional classes
 function cn(...inputs: any[]) {
@@ -66,111 +67,79 @@ export default function Compras() {
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
 
+  const fetchPurchases = async () => {
+    const { data } = await supabase.from('purchases').select('*').order('date', { ascending: false });
+    if (data) setPurchases(data.map(d => ({
+      id: d.id,
+      timestamp: d.date,
+      items: d.item_name,
+      total: Number(d.total_price),
+      place: "Local não informado", // Tabela purchases não tem place no schema original, mas podemos adaptar ou concatenar
+      payer: "Gabriel/Lara",
+      method: "Débito"
+    })));
+
+    const { data: insumosData } = await supabase.from('insumos').select('*');
+    if (insumosData) setMasterInsumos(insumosData);
+  };
+
   useEffect(() => {
-    const saved = localStorage.getItem("acola_compras");
-    if (saved) setPurchases(JSON.parse(saved));
-    
-    const savedInsumos = localStorage.getItem("acola_insumos");
-    if (savedInsumos) setMasterInsumos(JSON.parse(savedInsumos));
+    fetchPurchases();
   }, []);
 
-  const handleSavePurchase = (e: React.FormEvent) => {
+  const handleSavePurchase = async (e: React.FormEvent) => {
     e.preventDefault();
     const validItems = itemizedList.filter(i => i.name && i.price > 0);
     if (validItems.length === 0 || !place) return;
 
-    const totalCalculated = validItems.reduce((acc, curr) => acc + curr.price, 0);
-    const itemsSummary = validItems.map(i => `${i.name} (${i.qty}${i.unit})`).join(", ");
+    for (const item of validItems) {
+      // 1. Salvar na tabela de compras (Individual por item conforme schema)
+      const { error: purchaseError } = await supabase.from('purchases').insert([{
+        item_name: `${item.name} (${place})`,
+        quantity: item.qty,
+        unit: item.unit,
+        total_price: item.price,
+        date: new Date().toISOString()
+      }]);
 
-    let updatedPurchases = [...purchases];
-
-    if (editingId) {
-      const idx = updatedPurchases.findIndex(p => p.id === editingId);
-      if (idx >= 0) {
-        updatedPurchases[idx] = {
-          ...updatedPurchases[idx],
-          place,
-          payer,
-          method,
-          itemizedList: validItems,
-          items: itemsSummary,
-          total: totalCalculated,
-          timestamp: updatedPurchases[idx].timestamp // Mantém data original
-        };
+      if (purchaseError) {
+        addToast("Erro ao salvar compra: " + purchaseError.message, "alert");
+        continue;
       }
-    } else {
-      const newPurchase: Purchase = {
-        id: `COMPRA-${Date.now().toString().slice(-6)}`,
-        timestamp: new Date().toISOString(),
-        items: itemsSummary,
-        itemizedList: validItems,
-        total: totalCalculated,
-        place,
-        payer,
-        method
-      };
-      updatedPurchases = [newPurchase, ...updatedPurchases];
-    }
 
-    // Atualizar Histórico de Compras
-    setPurchases(updatedPurchases);
-    localStorage.setItem("acola_compras", JSON.stringify(updatedPurchases));
-
-    // ATUALIZAR LISTA MESTRA DE INSUMOS (Cálculo de Custo Base)
-    const savedInsumos = localStorage.getItem("acola_insumos");
-    const currentInsumos: any[] = savedInsumos ? JSON.parse(savedInsumos) : [];
-
-    validItems.forEach(item => {
-      let baseQty = item.qty;
-      if (item.unit === "kg" || item.unit === "L") baseQty = item.qty * 1000;
-      
+      // 2. Atualizar custo do insumo se necessário
+      const baseQty = (item.unit === "kg" || item.unit === "L") ? item.qty * 1000 : item.qty;
       const pricePerBaseUnit = item.price / Math.max(1, baseQty);
-      const baseUnit = (item.unit === "kg" || item.unit === "g") ? "g" : (item.unit === "L" || item.unit === "ml") ? "ml" : "un";
-
-      const existingIdx = currentInsumos.findIndex(ins => ins.name.toLowerCase() === item.name.toLowerCase());
       
-      if (existingIdx >= 0) {
-        const existingInsumo = currentInsumos[existingIdx];
-        
-        // SÓ ATUALIZA SE O PREÇO FOR MAIOR
-        if (pricePerBaseUnit > existingInsumo.pricePerBaseUnit) {
-          const increasePct = ((pricePerBaseUnit - existingInsumo.pricePerBaseUnit) / existingInsumo.pricePerBaseUnit) * 100;
-          addToast(`Aumento detectado em "${item.name}": +${increasePct.toFixed(1)}%`, "alert");
-          
-          currentInsumos[existingIdx] = {
-            ...existingInsumo,
-            latestPrice: item.price,
-            latestQty: item.qty,
-            latestUnit: item.unit,
-            pricePerBaseUnit,
-            lastPurchaseDate: new Date().toISOString(),
-            vendor: place
-          };
+      const existingInsumo = masterInsumos.find(ins => ins.nome.toLowerCase() === item.name.toLowerCase());
+
+      if (existingInsumo) {
+        if (pricePerBaseUnit > Number(existingInsumo.custo_unitario)) {
+          const increasePct = ((pricePerBaseUnit - Number(existingInsumo.custo_unitario)) / Number(existingInsumo.custo_unitario)) * 100;
+          addToast(`Aumento em "${item.name}": +${increasePct.toFixed(1)}%`, "alert");
+
+          await supabase.from('insumos').update({
+            custo_unitario: pricePerBaseUnit
+          }).eq('id', existingInsumo.id);
         }
       } else {
-        // Se for um item novo no cadastro mestre
-        currentInsumos.push({
-          name: item.name,
-          latestPrice: item.price,
-          latestQty: item.qty,
-          latestUnit: item.unit,
-          pricePerBaseUnit,
-          baseUnit,
-          lastPurchaseDate: new Date().toISOString(),
-          vendor: place,
-          createdAt: new Date().toISOString()
-        });
+        // Criar insumo novo se não existir
+        await supabase.from('insumos').insert([{
+          nome: item.name,
+          unidade: item.unit,
+          custo_unitario: pricePerBaseUnit
+        }]);
       }
-    });
+    }
 
-    localStorage.setItem("acola_insumos", JSON.stringify(currentInsumos));
-    setMasterInsumos(currentInsumos);
+    fetchPurchases();
     
     // Reset
     setEditingId(null);
     setPlace("");
     setItemizedList([{ name: "", price: 0, qty: 0, unit: "g" }]);
     setIsModalOpen(false);
+    addToast("Compras registradas e custos atualizados!", "success");
   };
 
   const handleEdit = (p: Purchase) => {
@@ -189,11 +158,16 @@ export default function Compras() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm("Excluir este registro de compra?")) return;
-    const updated = purchases.filter(p => p.id !== id);
-    setPurchases(updated);
-    localStorage.setItem("acola_compras", JSON.stringify(updated));
+    
+    const { error } = await supabase.from('purchases').delete().eq('id', id);
+    if (error) {
+      alert("Erro ao excluir compra: " + error.message);
+      return;
+    }
+    
+    setPurchases(purchases.filter(p => p.id !== id));
   };
 
   const filteredPurchases = purchases.filter(p => {

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 
 // Utility for conditional classes
 function cn(...inputs: any[]) {
@@ -24,18 +25,31 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Carregar dados reais do LocalStorage
+  // Carregar dados reais do Supabase
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      // 1. Produtos
+      const { data: products } = await supabase.from('products').select('*').order('name');
+      if (products) setInventory(products);
+
+      // 2. Vendas (Orders)
+      const { data: sales } = await supabase.from('orders').select('*').order('timestamp', { ascending: false });
+      if (sales) setVendas(sales);
+
+      // 3. Compras (Purchases)
+      const { data: purchases } = await supabase.from('purchases').select('*').order('date', { ascending: false });
+      if (purchases) setCompras(purchases);
+
+    } catch (error) {
+      console.error("Erro ao carregar dados:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const savedInventory = localStorage.getItem("acola_estoque");
-    if (savedInventory) setInventory(JSON.parse(savedInventory));
-
-    const savedSales = localStorage.getItem("acola_vendas");
-    if (savedSales) setVendas(JSON.parse(savedSales));
-
-    const savedPurchases = localStorage.getItem("acola_compras");
-    if (savedPurchases) setCompras(JSON.parse(savedPurchases));
-    
-    setIsLoading(false);
+    fetchData();
   }, []);
 
   // Lógicas de Cálculo Dinâmico
@@ -64,7 +78,7 @@ export default function Home() {
   const getPurchasesTotal = (period: "dia" | "semana" | "mes") => {
     const now = new Date();
     const filtered = compras.filter(compra => {
-      const cDate = new Date(compra.timestamp);
+      const cDate = new Date(compra.date); // Tabela usa 'date'
       if (period === "dia") {
         return cDate.toDateString() === now.toDateString();
       }
@@ -77,7 +91,7 @@ export default function Home() {
       }
       return false;
     });
-    return filtered.reduce((acc, curr) => acc + curr.total, 0);
+    return filtered.reduce((acc, curr) => acc + (curr.total_price || 0), 0); // Tabela usa 'total_price'
   };
 
   const totalPending = vendas
@@ -102,10 +116,10 @@ export default function Home() {
   };
 
   const totalProducts = inventory.length;
-  const totalUnits = inventory.reduce((acc, curr) => acc + curr.stock, 0);
+  const totalUnits = inventory.reduce((acc, curr) => acc + (curr.stock || 0), 0);
   const stockValueTotal = inventory.reduce((acc, curr) => {
-    const price = Number(curr.price.replace("R$", "").replace(",", "."));
-    return acc + (price * curr.stock);
+    const price = Number(curr.price || 0);
+    return acc + (price * (curr.stock || 0));
   }, 0);
 
   const stats = [
@@ -122,8 +136,7 @@ export default function Home() {
   const openEditProductModal = (item: any) => {
     setEditProductModal({ open: true, item });
     setTempName(item.name);
-    // Preço vem como "R$ 5,00", removemos o prefixo para o input
-    setTempPrice(item.price.replace("R$ ", "").replace(",", "."));
+    setTempPrice(item.price.toString());
     setImageInputValue(item.image || "");
   };
 
@@ -134,36 +147,73 @@ export default function Home() {
     setImageInputValue("");
   };
 
-  const handleSaveProduct = () => {
+  const handleSaveProduct = async () => {
     if (!editProductModal.item) return;
     
-    // Converte o preço de volta para o formato "R$ 0,00"
-    const formattedPrice = `R$ ${Number(tempPrice).toFixed(2).replace(".", ",")}`;
-
-    const updatedInventory = inventory.map(item =>
-      item.id === editProductModal.item.id 
-        ? { ...item, name: tempName, price: formattedPrice, image: imageInputValue } 
-        : item
-    );
+    const { error } = await supabase
+      .from('products')
+      .update({
+        name: tempName,
+        price: Number(tempPrice),
+        image: imageInputValue
+      })
+      .eq('id', editProductModal.item.id);
     
-    try {
-      setInventory(updatedInventory);
-      localStorage.setItem("acola_estoque", JSON.stringify(updatedInventory));
-      closeEditProductModal();
-    } catch (e) {
-      console.error("Erro ao salvar no LocalStorage:", e);
-      alert("O limite de espaço para fotos foi atingido. Tente usar uma foto menor ou remover outras fotos.");
+    if (error) {
+      console.error("Erro ao salvar:", error);
+      alert("Erro ao salvar produto no banco de dados.");
+      return;
     }
+
+    // Atualizar estado local para feedback imediato
+    setInventory(inventory.map(item => 
+      item.id === editProductModal.item.id 
+        ? { ...item, name: tempName, price: Number(tempPrice), image: imageInputValue }
+        : item
+    ));
+    
+    closeEditProductModal();
   };
 
-  const handleRemoveImage = () => {
+  const handleRemoveImage = async () => {
     if (!editProductModal.item) return;
-    const updatedInventory = inventory.map(item =>
+
+    const { error } = await supabase
+      .from('products')
+      .update({ image: "" })
+      .eq('id', editProductModal.item.id);
+
+    if (error) {
+      console.error("Erro ao remover imagem:", error);
+      alert("Erro ao remover imagem do banco.");
+      return;
+    }
+
+    setInventory(inventory.map(item =>
       item.id === editProductModal.item.id ? { ...item, image: "" } : item
-    );
-    setInventory(updatedInventory);
-    localStorage.setItem("acola_estoque", JSON.stringify(updatedInventory));
-    setImageInputValue(""); // Apenas limpa a imagem, mantém o modal aberto para edição do resto
+    ));
+    setImageInputValue(""); 
+  };
+
+  const handleDeleteProduct = async () => {
+    if (!editProductModal.item) return;
+    
+    if (!confirm(`⚠️ ATENÇÃO: Deseja excluir permanentemente o produto "${editProductModal.item.name}"? Esta ação não pode ser desfeita.`)) return;
+
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', editProductModal.item.id);
+
+    if (error) {
+      console.error("Erro ao excluir produto:", error);
+      alert("Erro ao excluir produto do banco.");
+      return;
+    }
+
+    setInventory(inventory.filter(item => item.id !== editProductModal.item.id));
+    closeEditProductModal();
+    alert("Produto excluído com sucesso!");
   };
 
   const compressImage = (base64Str: string): Promise<string> => {
@@ -402,8 +452,8 @@ export default function Home() {
                             {item.category}
                           </span>
                         </td>
-                        <td className="px-6 py-5 text-xs font-bold text-primary/40 tracking-tight">{item.cost}</td>
-                        <td className="px-6 py-5 text-sm font-black text-primary">{item.price}</td>
+                        <td className="px-6 py-5 text-xs font-bold text-primary/40 tracking-tight">R$ {Number(item.cost || 0).toFixed(2).replace(".", ",")}</td>
+                        <td className="px-6 py-5 text-sm font-black text-primary">R$ {Number(item.price || 0).toFixed(2).replace(".", ",")}</td>
                         <td className="px-6 py-5">
                           <div className="flex items-center gap-2">
                             <div className="w-24 h-1.5 bg-background rounded-full overflow-hidden border border-primary/5">
@@ -619,20 +669,30 @@ export default function Home() {
             </div>
 
             {/* Actions */}
-            <div className="px-6 pb-6 flex gap-3">
+            <div className="px-6 pb-6 flex flex-col gap-3">
+              <div className="flex gap-3">
+                <button
+                  onClick={handleRemoveImage}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-primary/10 text-primary/40 text-[10px] font-black uppercase tracking-widest hover:bg-primary/5 transition-all cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[15px]">image_not_supported</span>
+                  Remover Foto
+                </button>
+                <button
+                  onClick={handleSaveProduct}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-secondary text-primary text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all cursor-pointer shadow-lg"
+                >
+                  <span className="material-symbols-outlined text-[15px]">check</span>
+                  Salvar
+                </button>
+              </div>
+              
               <button
-                onClick={handleRemoveImage}
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-error/20 text-error text-[10px] font-black uppercase tracking-widest hover:bg-error/10 transition-all cursor-pointer"
+                onClick={handleDeleteProduct}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-error text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-all cursor-pointer shadow-md"
               >
-                <span className="material-symbols-outlined text-[15px]">delete</span>
-                Excluir Foto
-              </button>
-              <button
-                onClick={handleSaveProduct}
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-secondary text-primary text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all cursor-pointer shadow-lg"
-              >
-                <span className="material-symbols-outlined text-[15px]">check</span>
-                Salvar
+                <span className="material-symbols-outlined text-[15px]">delete_forever</span>
+                Excluir Produto Permanentemente
               </button>
             </div>
           </motion.div>
