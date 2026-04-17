@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
 
 // Utility for conditional classes
 function cn(...inputs: any[]) {
@@ -13,8 +12,10 @@ function cn(...inputs: any[]) {
 export default function Home() {
   const [activeTab, setActiveTab] = useState("Todos os Itens");
   const [salesPeriod, setSalesPeriod] = useState<"dia" | "semana" | "mes">("dia");
+  const [purchasePeriod, setPurchasePeriod] = useState<"dia" | "semana" | "mes">("dia");
   const [inventory, setInventory] = useState<any[]>([]);
   const [vendas, setVendas] = useState<any[]>([]);
+  const [compras, setCompras] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editProductModal, setEditProductModal] = useState<{ open: boolean; item: any | null }>({ open: false, item: null });
   const [tempName, setTempName] = useState("");
@@ -23,30 +24,18 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Carregar dados reais do Supabase
+  // Carregar dados reais do LocalStorage
   useEffect(() => {
-    async function loadData() {
-      setIsLoading(true);
-      
-      // Carregar Inventário
-      const { data: inventoryData, error: invError } = await supabase
-        .from("products")
-        .select("*")
-        .order("name");
-      
-      if (!invError && inventoryData) setInventory(inventoryData);
+    const savedInventory = localStorage.getItem("acola_estoque");
+    if (savedInventory) setInventory(JSON.parse(savedInventory));
 
-      // Carregar Vendas (para os cards de estatísticas)
-      const { data: salesData, error: salesError } = await supabase
-        .from("orders")
-        .select("*");
+    const savedSales = localStorage.getItem("acola_vendas");
+    if (savedSales) setVendas(JSON.parse(savedSales));
 
-      if (!salesError && salesData) setVendas(salesData);
-      
-      setIsLoading(false);
-    }
+    const savedPurchases = localStorage.getItem("acola_compras");
+    if (savedPurchases) setCompras(JSON.parse(savedPurchases));
     
-    loadData();
+    setIsLoading(false);
   }, []);
 
   // Lógicas de Cálculo Dinâmico
@@ -71,6 +60,25 @@ export default function Home() {
     });
     return filtered.reduce((acc, curr) => acc + curr.total, 0);
   };
+ 
+  const getPurchasesTotal = (period: "dia" | "semana" | "mes") => {
+    const now = new Date();
+    const filtered = compras.filter(compra => {
+      const cDate = new Date(compra.timestamp);
+      if (period === "dia") {
+        return cDate.toDateString() === now.toDateString();
+      }
+      if (period === "semana") {
+        const diff = (now.getTime() - cDate.getTime()) / (1000 * 60 * 60 * 24);
+        return diff <= 7;
+      }
+      if (period === "mes") {
+        return cDate.getMonth() === now.getMonth() && cDate.getFullYear() === now.getFullYear();
+      }
+      return false;
+    });
+    return filtered.reduce((acc, curr) => acc + curr.total, 0);
+  };
 
   const totalPending = vendas
     .filter(v => v.paymentStatus === "pendente")
@@ -85,6 +93,12 @@ export default function Home() {
     dia: { label: "Hoje", value: formatCurrency(getSalesTotal("dia")) },
     semana: { label: "Esta Semana", value: formatCurrency(getSalesTotal("semana")) },
     mes: { label: "Este Mês", value: formatCurrency(getSalesTotal("mes")) }
+  };
+
+  const purchasesData = {
+    dia: { label: "Hoje", value: formatCurrency(getPurchasesTotal("dia")) },
+    semana: { label: "Esta Semana", value: formatCurrency(getPurchasesTotal("semana")) },
+    mes: { label: "Este Mês", value: formatCurrency(getPurchasesTotal("mes")) }
   };
 
   const totalProducts = inventory.length;
@@ -120,56 +134,36 @@ export default function Home() {
     setImageInputValue("");
   };
 
-  const handleSaveProduct = async () => {
+  const handleSaveProduct = () => {
     if (!editProductModal.item) return;
     
     // Converte o preço de volta para o formato "R$ 0,00"
     const formattedPrice = `R$ ${Number(tempPrice).toFixed(2).replace(".", ",")}`;
 
+    const updatedInventory = inventory.map(item =>
+      item.id === editProductModal.item.id 
+        ? { ...item, name: tempName, price: formattedPrice, image: imageInputValue } 
+        : item
+    );
+    
     try {
-      const { error } = await supabase
-        .from("products")
-        .update({ 
-          name: tempName, 
-          price: formattedPrice, 
-          image: imageInputValue 
-        })
-        .eq("id", editProductModal.item.id);
-
-      if (error) throw error;
-
-      // Atualizar estado local
-      setInventory(prev => prev.map(item =>
-        item.id === editProductModal.item.id 
-          ? { ...item, name: tempName, price: formattedPrice, image: imageInputValue } 
-          : item
-      ));
-
+      setInventory(updatedInventory);
+      localStorage.setItem("acola_estoque", JSON.stringify(updatedInventory));
       closeEditProductModal();
     } catch (e) {
-      console.error("Erro ao salvar no Supabase:", e);
-      alert("Erro ao salvar as alterações do produto.");
+      console.error("Erro ao salvar no LocalStorage:", e);
+      alert("O limite de espaço para fotos foi atingido. Tente usar uma foto menor ou remover outras fotos.");
     }
   };
 
-  const handleRemoveImage = async () => {
+  const handleRemoveImage = () => {
     if (!editProductModal.item) return;
-    
-    try {
-      const { error } = await supabase
-        .from("products")
-        .update({ image: "" })
-        .eq("id", editProductModal.item.id);
-
-      if (error) throw error;
-
-      setInventory(prev => prev.map(item =>
-        item.id === editProductModal.item.id ? { ...item, image: "" } : item
-      ));
-      setImageInputValue("");
-    } catch (e) {
-      console.error("Erro ao remover imagem:", e);
-    }
+    const updatedInventory = inventory.map(item =>
+      item.id === editProductModal.item.id ? { ...item, image: "" } : item
+    );
+    setInventory(updatedInventory);
+    localStorage.setItem("acola_estoque", JSON.stringify(updatedInventory));
+    setImageInputValue(""); // Apenas limpa a imagem, mantém o modal aberto para edição do resto
   };
 
   const compressImage = (base64Str: string): Promise<string> => {
@@ -232,7 +226,7 @@ export default function Home() {
         <div className="max-w-[1920px] mx-auto flex flex-col h-full gap-8">
           
           {/* Dashboard Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 shrink-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 shrink-0">
             {stats.map((stat, idx) => {
               const isPendingCard = stat.label.includes("RECEBER");
               const cardContent = (
@@ -265,26 +259,26 @@ export default function Home() {
               );
             })}
 
-            {/* CARD DE VENDAS DINÂMICO - INTEGRADO NA LINHA */}
+            {/* CARD DE VENDAS DINÂMICO */}
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.3 }}
-              className="bg-secondary p-6 rounded-[24px] text-primary shadow-xl relative overflow-hidden flex flex-col justify-between group h-full"
+              className="bg-surface p-6 rounded-[24px] border border-primary/5 shadow-sm relative overflow-hidden flex flex-col justify-between group h-full"
             >
               <div className="relative z-10">
                 <div className="flex justify-between items-start mb-4">
-                  <p className="text-[10px] font-black uppercase tracking-widest opacity-40">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-primary/40">
                     Vendas {salesPeriod === 'mes' ? 'Mês' : salesPeriod === 'semana' ? 'Semana' : 'Hoje'}
                   </p>
-                  <div className="flex bg-primary/10 p-0.5 rounded-lg backdrop-blur-sm">
+                  <div className="flex bg-primary/5 p-0.5 rounded-lg">
                     {(['dia', 'semana', 'mes'] as const).map((period) => (
                       <button
                          key={period}
-                         onClick={() => setSalesPeriod(period)}
+                         onClick={(e) => { e.preventDefault(); setSalesPeriod(period); }}
                          className={cn(
                            "w-6 h-6 flex items-center justify-center rounded-md text-[9px] font-black uppercase transition-all",
-                           salesPeriod === period ? "bg-background text-secondary shadow-md" : "hover:bg-primary/5 text-background/60"
+                           salesPeriod === period ? "bg-secondary text-primary shadow-md" : "hover:bg-primary/5 text-primary/30"
                          )}
                       >
                         {period[0]}
@@ -292,10 +286,44 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
-                <h2 className="text-3xl font-black italic tracking-tighter">{salesData[salesPeriod].value}</h2>
+                <h2 className="text-3xl font-black italic tracking-tighter text-white">{salesData[salesPeriod].value}</h2>
               </div>
               <div className="absolute -right-4 -bottom-4 opacity-5 pointer-events-none group-hover:scale-110 transition-transform duration-500">
                 <span className="material-symbols-outlined text-[100px] font-black italic">payments</span>
+              </div>
+            </motion.div>
+
+            {/* CARD DE COMPRAS DINÂMICO */}
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.4 }}
+              className="bg-surface p-6 rounded-[24px] border border-primary/5 shadow-sm relative overflow-hidden flex flex-col justify-between group h-full"
+            >
+              <div className="relative z-10">
+                <div className="flex justify-between items-start mb-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-primary/40">
+                    Compras {purchasePeriod === 'mes' ? 'Mês' : purchasePeriod === 'semana' ? 'Semana' : 'Hoje'}
+                  </p>
+                  <div className="flex bg-primary/5 p-0.5 rounded-lg">
+                    {(['dia', 'semana', 'mes'] as const).map((period) => (
+                      <button
+                         key={period}
+                         onClick={(e) => { e.preventDefault(); setPurchasePeriod(period); }}
+                         className={cn(
+                           "w-6 h-6 flex items-center justify-center rounded-md text-[9px] font-black uppercase transition-all",
+                           purchasePeriod === period ? "bg-secondary text-primary shadow-md" : "hover:bg-primary/5 text-primary/30"
+                         )}
+                      >
+                        {period[0]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <h2 className="text-3xl font-black italic tracking-tighter text-white">{purchasesData[purchasePeriod].value}</h2>
+              </div>
+              <div className="absolute -right-4 -bottom-4 opacity-5 pointer-events-none group-hover:scale-110 transition-transform duration-500">
+                <span className="material-symbols-outlined text-[100px] font-black italic">shopping_cart</span>
               </div>
             </motion.div>
           </div>

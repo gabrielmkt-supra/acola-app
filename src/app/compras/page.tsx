@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
 // Utility for conditional classes
@@ -68,29 +67,11 @@ export default function Compras() {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
 
   useEffect(() => {
-    async function loadData() {
-      // Carregar Compras
-      const { data: purchasesData } = await supabase
-        .from("purchases")
-        .select("*")
-        .order("date", { ascending: false });
-      if (purchasesData) setPurchases(purchasesData.map(p => ({
-         id: p.id,
-         timestamp: p.date,
-         items: p.item_name,
-         total: p.total_price,
-         place: "", // Nota: adicionei 'place' ao SQL se necessário, ou mantenha opcional
-         payer: "Gabriel",
-         method: "Crédito"
-      })));
-      
-      // Carregar Insumos
-      const { data: insumosData } = await supabase
-        .from("insumos")
-        .select("*");
-      if (insumosData) setMasterInsumos(insumosData);
-    }
-    loadData();
+    const saved = localStorage.getItem("acola_compras");
+    if (saved) setPurchases(JSON.parse(saved));
+    
+    const savedInsumos = localStorage.getItem("acola_insumos");
+    if (savedInsumos) setMasterInsumos(JSON.parse(savedInsumos));
   }, []);
 
   const handleSavePurchase = (e: React.FormEvent) => {
@@ -131,53 +112,60 @@ export default function Compras() {
       updatedPurchases = [newPurchase, ...updatedPurchases];
     }
 
-    const saveToCloud = async () => {
-      // 1. Salvar registros de compra
-      for (const item of validItems) {
-        await supabase.from("purchases").insert([{
-          item_name: item.name,
-          quantity: item.qty,
-          unit: item.unit,
-          total_price: item.price,
-          date: new Date().toISOString()
-        }]);
+    // Atualizar Histórico de Compras
+    setPurchases(updatedPurchases);
+    localStorage.setItem("acola_compras", JSON.stringify(updatedPurchases));
 
-        // 2. Atualizar Insumos
-        let baseQty = item.qty;
-        if (item.unit === "kg" || item.unit === "L") baseQty = item.qty * 1000;
-        const custo_unitario = item.price / Math.max(1, baseQty);
+    // ATUALIZAR LISTA MESTRA DE INSUMOS (Cálculo de Custo Base)
+    const savedInsumos = localStorage.getItem("acola_insumos");
+    const currentInsumos: any[] = savedInsumos ? JSON.parse(savedInsumos) : [];
 
-        const existing = masterInsumos.find(ins => (ins.nome || ins.name).toLowerCase() === item.name.toLowerCase());
-        
-        if (existing) {
-          const currentCusto = existing.custo_unitario || existing.pricePerBaseUnit;
-          if (custo_unitario > currentCusto) {
-            const increasePct = ((custo_unitario - currentCusto) / currentCusto) * 100;
-            addToast(`Aumento detectado em "${item.name}": +${increasePct.toFixed(1)}%`, "alert");
-            
-            await supabase
-              .from("insumos")
-              .update({ custo_unitario })
-              .eq("id", existing.id);
-          }
-        }
-      }
+    validItems.forEach(item => {
+      let baseQty = item.qty;
+      if (item.unit === "kg" || item.unit === "L") baseQty = item.qty * 1000;
       
-      // Recarregar dados
-      const { data: newPurchases } = await supabase.from("purchases").select("*").order("date", { ascending: false });
-      if (newPurchases) setPurchases(newPurchases.map(p => ({
-        id: p.id,
-        timestamp: p.date,
-        items: p.item_name,
-        total: p.total_price,
-        place: "",
-        payer: "Gabriel",
-        method: "Crédito"
-      })));
-    };
+      const pricePerBaseUnit = item.price / Math.max(1, baseQty);
+      const baseUnit = (item.unit === "kg" || item.unit === "g") ? "g" : (item.unit === "L" || item.unit === "ml") ? "ml" : "un";
 
-    saveToCloud();
+      const existingIdx = currentInsumos.findIndex(ins => ins.name.toLowerCase() === item.name.toLowerCase());
+      
+      if (existingIdx >= 0) {
+        const existingInsumo = currentInsumos[existingIdx];
+        
+        // SÓ ATUALIZA SE O PREÇO FOR MAIOR
+        if (pricePerBaseUnit > existingInsumo.pricePerBaseUnit) {
+          const increasePct = ((pricePerBaseUnit - existingInsumo.pricePerBaseUnit) / existingInsumo.pricePerBaseUnit) * 100;
+          addToast(`Aumento detectado em "${item.name}": +${increasePct.toFixed(1)}%`, "alert");
+          
+          currentInsumos[existingIdx] = {
+            ...existingInsumo,
+            latestPrice: item.price,
+            latestQty: item.qty,
+            latestUnit: item.unit,
+            pricePerBaseUnit,
+            lastPurchaseDate: new Date().toISOString(),
+            vendor: place
+          };
+        }
+      } else {
+        // Se for um item novo no cadastro mestre
+        currentInsumos.push({
+          name: item.name,
+          latestPrice: item.price,
+          latestQty: item.qty,
+          latestUnit: item.unit,
+          pricePerBaseUnit,
+          baseUnit,
+          lastPurchaseDate: new Date().toISOString(),
+          vendor: place,
+          createdAt: new Date().toISOString()
+        });
+      }
+    });
 
+    localStorage.setItem("acola_insumos", JSON.stringify(currentInsumos));
+    setMasterInsumos(currentInsumos);
+    
     // Reset
     setEditingId(null);
     setPlace("");
@@ -201,12 +189,11 @@ export default function Compras() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (!confirm("Excluir este registro de compra?")) return;
-    const { error } = await supabase.from("purchases").delete().eq("id", id);
-    if (!error) {
-      setPurchases(purchases.filter(p => p.id !== id));
-    }
+    const updated = purchases.filter(p => p.id !== id);
+    setPurchases(updated);
+    localStorage.setItem("acola_compras", JSON.stringify(updated));
   };
 
   const filteredPurchases = purchases.filter(p => {

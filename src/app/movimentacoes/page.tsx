@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
 
 interface Movement {
   id: string;
@@ -25,47 +24,14 @@ export default function Movimentacoes() {
   const [activeTab, setActiveTab] = useState<"Fluxo" | "Pedidos" | "Pendências">("Fluxo");
 
   useEffect(() => {
-    async function loadAllData() {
-      // 1. Carregar Histórico
-      const { data: historyData } = await supabase
-        .from("inventory_movements")
-        .select("*")
-        .order("timestamp", { ascending: false });
-      
-      if (historyData) setHistory(historyData.map(h => ({
-        id: h.id,
-        timestamp: h.timestamp,
-        productId: h.product_id,
-        productName: h.product_name,
-        type: h.type,
-        amount: h.amount,
-        previousStock: h.previous_stock,
-        finalStock: h.final_stock,
-        note: h.note
-      })));
+    const savedHistory = localStorage.getItem("acola_historico");
+    if (savedHistory) setHistory(JSON.parse(savedHistory));
 
-      // 2. Carregar Vendas (Pedidos)
-      const { data: salesData } = await supabase
-        .from("orders")
-        .select("*")
-        .order("timestamp", { ascending: false });
-      
-      if (salesData) setVendas(salesData.map(v => ({
-        id: v.id,
-        timestamp: v.timestamp,
-        client: { name: v.client_name, phone: v.client_phone },
-        items: v.items,
-        total: v.total,
-        paymentStatus: v.payment_status,
-        status: "concluído"
-      })));
+    const savedSales = localStorage.getItem("acola_vendas");
+    if (savedSales) setVendas(JSON.parse(savedSales));
 
-      // 3. Carregar Inventário
-      const { data: invData } = await supabase.from("products").select("*");
-      if (invData) setInventory(invData);
-    }
-
-    loadAllData();
+    const savedInventory = localStorage.getItem("acola_estoque");
+    if (savedInventory) setInventory(JSON.parse(savedInventory));
 
     // Suporte a abertura direta via URL (ex: ?tab=Pendências)
     const params = new URLSearchParams(window.location.search);
@@ -75,61 +41,58 @@ export default function Movimentacoes() {
     }
   }, []);
 
-  const handleCancelOrder = async (orderId: string) => {
+  const handleCancelOrder = (orderId: string) => {
     if (!confirm("⚠️ ATENÇÃO: Deseja realmente estornar esta venda?\n\nOs produtos serão devolvidos ao estoque e a venda será excluída.")) return;
 
     const order = vendas.find(v => v.id === orderId);
     if (!order) return;
 
-    try {
-      // 1. Devolver itens ao estoque no Supabase
-      for (const item of order.items) {
-        const invProduct = inventory.find(p => p.id === item.id);
-        if (invProduct) {
-          const previousStock = invProduct.stock;
-          const finalStock = previousStock + item.quantity;
-          
-          // Registrar Movimentação
-          await supabase.from("inventory_movements").insert([{
-            product_id: item.id,
-            product_name: item.name,
-            type: "Ajuste",
-            amount: item.quantity,
-            previous_stock: previousStock,
-            final_stock: finalStock,
-            note: `ESTORNO: Pedido ${orderId.split('-').pop()}`
-          }]);
+    const updatedInventory = [...inventory];
+    const newMovements: any[] = [];
 
-          // Atualizar Produto
-          await supabase.from("products").update({ stock: finalStock }).eq("id", item.id);
-        }
+    order.items.forEach((item: any) => {
+      const invProduct = updatedInventory.find(p => p.id === item.id);
+      if (invProduct) {
+        const previousStock = invProduct.stock;
+        invProduct.stock += item.quantity;
+        
+        newMovements.push({
+          id: `ESTORNO-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          timestamp: new Date().toISOString(),
+          productId: item.id,
+          productName: item.name,
+          type: "Ajuste",
+          amount: item.quantity,
+          previousStock,
+          finalStock: invProduct.stock,
+          note: `ESTORNO: Pedido ${orderId.split('-').pop()}`
+        });
       }
+    });
 
-      // 2. Deletar Venda
-      await supabase.from("orders").delete().eq("id", orderId);
+    const updatedSales = vendas.filter(v => v.id !== orderId);
+    const updatedHistory = [...newMovements, ...history];
 
-      alert("Estorno realizado com sucesso!");
-      window.location.reload(); // Recarregar para atualizar tudo
-    } catch (err) {
-      console.error(err);
-      alert("Erro ao realizar estorno.");
-    }
+    localStorage.setItem("acola_estoque", JSON.stringify(updatedInventory));
+    localStorage.setItem("acola_vendas", JSON.stringify(updatedSales));
+    localStorage.setItem("acola_historico", JSON.stringify(updatedHistory));
+
+    setInventory(updatedInventory);
+    setVendas(updatedSales);
+    setHistory(updatedHistory);
+    alert("Estorno realizado com sucesso!");
   };
 
-  const handleMarkAsPaid = async (orderId: string) => {
+  const handleMarkAsPaid = (orderId: string) => {
     if (!confirm("Confirmar recebimento deste pedido? O valor entrará no faturamento oficial.")) return;
 
-    const { error } = await supabase
-      .from("orders")
-      .update({ payment_status: "pago" })
-      .eq("id", orderId);
+    const updatedSales = vendas.map(v => 
+      v.id === orderId ? { ...v, paymentStatus: "pago" } : v
+    );
 
-    if (!error) {
-      setVendas(vendas.map(v => v.id === orderId ? { ...v, paymentStatus: "pago" } : v));
-      alert("Pagamento registrado com sucesso!");
-    } else {
-      alert("Erro ao registrar pagamento.");
-    }
+    localStorage.setItem("acola_vendas", JSON.stringify(updatedSales));
+    setVendas(updatedSales);
+    alert("Pagamento registrado com sucesso!");
   };
 
   const filteredHistory = history.filter(item => 

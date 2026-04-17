@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
 
 function cn(...inputs: any[]) {
   return inputs.filter(Boolean).join(" ");
@@ -40,41 +39,33 @@ export default function Receitas() {
   
   // Load data
   useEffect(() => {
-    async function loadData() {
-      // 1. Carregar Produtos
-      const { data: invData } = await supabase.from("products").select("*").order("name");
-      if (invData) setProducts(invData);
+    const savedProducts = localStorage.getItem("acola_estoque");
+    if (savedProducts) setProducts(JSON.parse(savedProducts));
 
-      // 2. Carregar Insumos
-      const { data: insData } = await supabase.from("insumos").select("*").order("nome");
-      if (insData) setInsumos(insData.map(i => ({
-        name: i.nome,
-        pricePerBaseUnit: i.custo_unitario,
-        baseUnit: i.unidade,
-        latestPrice: i.custo_unitario * (i.unidade === "un" ? 1 : 1000), // Estimativa de embalagem
-        latestQty: i.unidade === "un" ? 1 : 1000,
-        vendor: ""
-      })));
+    const savedInsumos = localStorage.getItem("acola_insumos");
+    if (savedInsumos) setInsumos(JSON.parse(savedInsumos));
 
-      // 3. Carregar Receita do Produto Selecionado
-      if (selectedProductId) {
-        const { data: prodData } = await supabase
-          .from("products")
-          .select("recipe")
-          .eq("id", selectedProductId)
-          .single();
-        
-        if (prodData && prodData.recipe) {
-          const recipeData = prodData.recipe as any;
-          setCurrentRecipe(recipeData.items || []);
-          setRendimento(recipeData.rendimento || 1);
-        } else {
-          setCurrentRecipe([]);
-          setRendimento(1);
-        }
+    const savedReceitas = localStorage.getItem("acola_receitas");
+    if (savedReceitas && selectedProductId) {
+      const allReceitas = JSON.parse(savedReceitas);
+      const data = allReceitas[selectedProductId];
+      
+      if (Array.isArray(data)) {
+        // Compatibilidade com dados antigos (apenas array)
+        setCurrentRecipe(data);
+        setRendimento(1);
+      } else if (data) {
+        // Novo formato (objeto com items e rendimento)
+        setCurrentRecipe(data.items || []);
+        setRendimento(data.rendimento || 1);
+      } else {
+        setCurrentRecipe([]);
+        setRendimento(1);
       }
+    } else {
+      setCurrentRecipe([]);
+      setRendimento(1);
     }
-    loadData();
   }, [selectedProductId]);
 
   const addIngredient = () => {
@@ -126,40 +117,37 @@ export default function Receitas() {
     }, 0);
   };
 
-  const handleSaveRecipe = async () => {
+  const handleSaveRecipe = () => {
     if (!selectedProductId) return;
 
-    const { error } = await supabase
-      .from("products")
-      .update({ 
-        recipe: {
-          items: currentRecipe,
-          rendimento: rendimento
-        }
-      })
-      .eq("id", selectedProductId);
+    // 1. Save recipe mapping
+    const savedReceitas = localStorage.getItem("acola_receitas");
+    const allReceitas = savedReceitas ? JSON.parse(savedReceitas) : {};
+    allReceitas[selectedProductId] = {
+      items: currentRecipe,
+      rendimento: rendimento
+    };
+    localStorage.setItem("acola_receitas", JSON.stringify(allReceitas));
 
-    if (!error) {
-      alert("Receita salva com sucesso na nuvem!");
-    } else {
-      alert("Erro ao salvar receita no banco de dados.");
-    }
+    alert("Receita salva com sucesso!");
   };
 
-  const updateProductCost = async () => {
+  const updateProductCost = () => {
     if (!selectedProductId) return;
     const unitCost = calculateUnitCost();
 
-    const { error } = await supabase
-      .from("products")
-      .update({ cost: `R$ ${unitCost.toFixed(2)}` })
-      .eq("id", selectedProductId);
-
-    if (!error) {
-      setProducts(products.map(p => p.id === selectedProductId ? { ...p, cost: `R$ ${unitCost.toFixed(2)}` } : p));
+    const savedProducts = localStorage.getItem("acola_estoque");
+    if (savedProducts) {
+      const allProducts: Product[] = JSON.parse(savedProducts);
+      const updated = allProducts.map(p => {
+        if (p.id === selectedProductId) {
+          return { ...p, cost: `R$ ${unitCost.toFixed(2)}` };
+        }
+        return p;
+      });
+      localStorage.setItem("acola_estoque", JSON.stringify(updated));
+      setProducts(updated);
       alert(`O preço de custo por UNIDADE do produto foi atualizado para R$ ${unitCost.toFixed(2)}`);
-    } else {
-      alert("Erro ao atualizar custo no estoque.");
     }
   };
 

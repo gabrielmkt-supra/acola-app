@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
 
 // Utility for conditional classes
 function cn(...inputs: any[]) {
@@ -39,20 +38,13 @@ export default function FluxoCaixa() {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
 
   useEffect(() => {
-    async function loadFinanceData() {
-      // 1. Carregar Vendas
-      const { data: sales } = await supabase.from("orders").select("timestamp, total");
-      if (sales) setVendas(sales.map(s => ({ timestamp: s.timestamp, total: s.total })));
+    const savedVendas = localStorage.getItem("acola_vendas");
+    const savedCompras = localStorage.getItem("acola_compras");
+    const savedInventory = localStorage.getItem("acola_estoque");
 
-      // 2. Carregar Compras
-      const { data: buyings } = await supabase.from("purchases").select("date, total_price");
-      if (buyings) setCompras(buyings.map(c => ({ timestamp: c.date, total: c.total_price })));
-
-      // 3. Carregar Estoque
-      const { data: inv } = await supabase.from("products").select("stock, price");
-      if (inv) setInventory(inv);
-    }
-    loadFinanceData();
+    if (savedVendas) setVendas(JSON.parse(savedVendas));
+    if (savedCompras) setCompras(JSON.parse(savedCompras));
+    if (savedInventory) setInventory(JSON.parse(savedInventory));
   }, []);
 
   // Cálculos Dinâmicos

@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
 // Utility for conditional classes
@@ -12,11 +11,15 @@ function cn(...inputs: any[]) {
 }
 
 interface Insumo {
-  id?: string;
-  nome: string;
-  unidade: string;
-  custo_unitario: number;
-  created_at?: string;
+  name: string;
+  pricePerBaseUnit: number;
+  baseUnit: "g" | "ml" | "un";
+  latestPrice: number;
+  latestQty: number;
+  latestUnit: string;
+  lastPurchaseDate: string;
+  vendor?: string;
+  createdAt: string;
 }
 
 export default function GestaoInsumos() {
@@ -32,72 +35,53 @@ export default function GestaoInsumos() {
   const [unit, setUnit] = useState<"g" | "kg" | "ml" | "L" | "un">("g");
 
   useEffect(() => {
-    async function loadInsumos() {
-      const { data, error } = await supabase
-        .from("insumos")
-        .select("*")
-        .order("nome");
-      
-      if (!error && data) {
-        setInsumos(data);
-      }
+    const saved = localStorage.getItem("acola_insumos");
+    if (saved) {
+      setInsumos(JSON.parse(saved));
     }
-    loadInsumos();
   }, []);
 
-  const handleSaveInsumo = async (e: React.FormEvent) => {
+  const handleSaveInsumo = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || initialPrice <= 0 || initialQty <= 0) return;
 
     let baseQty = initialQty;
     if (unit === "kg" || unit === "L") baseQty = initialQty * 1000;
     
-    const custo_unitario = initialPrice / Math.max(1, baseQty);
-    const unidade = (unit === "kg" || unit === "g") ? "g" : (unit === "L" || unit === "ml") ? "ml" : "un";
+    const pricePerBaseUnit = initialPrice / Math.max(1, baseQty);
+    const baseUnit = (unit === "kg" || unit === "g") ? "g" : (unit === "L" || unit === "ml") ? "ml" : "un";
 
-    const newInsumo = {
-      nome: name,
-      unidade,
-      custo_unitario
+    const newInsumo: Insumo = {
+      name,
+      pricePerBaseUnit,
+      baseUnit,
+      latestPrice: initialPrice,
+      latestQty: initialQty,
+      latestUnit: unit,
+      lastPurchaseDate: new Date().toISOString(),
+      createdAt: new Date().toISOString()
     };
 
-    const { data, error } = await supabase
-      .from("insumos")
-      .insert([newInsumo])
-      .select()
-      .single();
+    const updated = [...insumos, newInsumo];
+    setInsumos(updated);
+    localStorage.setItem("acola_insumos", JSON.stringify(updated));
 
-    if (!error && data) {
-      setInsumos(prev => [...prev, data]);
-      // Reset
-      setName("");
-      setInitialPrice(0);
-      setInitialQty(0);
-      setIsModalOpen(false);
-    } else {
-      console.error("Erro ao salvar insumo:", error);
-      alert("Erro ao salvar o insumo na nuvem.");
-    }
+    // Reset
+    setName("");
+    setInitialPrice(0);
+    setInitialQty(0);
+    setIsModalOpen(false);
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Excluir o insumo "${name}"? Isso pode afetar receitas vinculadas.`)) return;
-    
-    const { error } = await supabase
-      .from("insumos")
-      .delete()
-      .eq("id", id);
-
-    if (!error) {
-      setInsumos(prev => prev.filter(i => i.id !== id));
-    } else {
-      console.error("Erro ao deletar insumo:", error);
-      alert("Erro ao deletar o insumo.");
-    }
+  const handleDelete = (nameToDelete: string) => {
+    if (!confirm(`Excluir o insumo "${nameToDelete}"? Isso pode afetar receitas vinculadas.`)) return;
+    const updated = insumos.filter(i => i.name !== nameToDelete);
+    setInsumos(updated);
+    localStorage.setItem("acola_insumos", JSON.stringify(updated));
   };
 
   const filteredInsumos = insumos.filter(i => 
-    i.nome.toLowerCase().includes(searchTerm.toLowerCase())
+    i.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -149,7 +133,7 @@ export default function GestaoInsumos() {
             ) : (
               filteredInsumos.map((ins) => (
                 <motion.div 
-                  key={ins.id || ins.nome}
+                  key={ins.name}
                   layout
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -161,22 +145,33 @@ export default function GestaoInsumos() {
                       <span className="material-symbols-outlined">inventory_2</span>
                     </div>
                     <button 
-                      onClick={() => ins.id && handleDelete(ins.id, ins.nome)}
+                      onClick={() => handleDelete(ins.name)}
                       className="w-8 h-8 rounded-lg text-primary/10 hover:text-error hover:bg-error/5 transition-all flex items-center justify-center"
                     >
                       <span className="material-symbols-outlined text-sm">delete</span>
                     </button>
                   </div>
 
-                  <h3 className="text-lg font-black uppercase italic tracking-tight truncate">{ins.nome}</h3>
-                  <p className="text-[10px] font-bold text-primary/30 uppercase tracking-[0.2em] mb-6">Cadastro em {new Date(ins.created_at || "").toLocaleDateString()}</p>
+                  <h3 className="text-lg font-black uppercase italic tracking-tight truncate">{ins.name}</h3>
+                  <p className="text-[10px] font-bold text-primary/30 uppercase tracking-[0.2em] mb-6">Cadastro em {new Date(ins.createdAt || ins.lastPurchaseDate).toLocaleDateString()}</p>
 
                   <div className="space-y-4">
                     <div className="bg-background/50 p-4 rounded-2xl border border-primary/5">
-                      <p className="text-[9px] font-black text-primary/20 uppercase tracking-widest mb-1">Custo por {ins.unidade}</p>
+                      <p className="text-[9px] font-black text-primary/20 uppercase tracking-widest mb-1">Custo por {ins.baseUnit}</p>
                       <p className="text-xl font-black text-secondary italic">
-                        R$ {ins.custo_unitario.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}
+                        R$ {ins.pricePerBaseUnit.toLocaleString("pt-BR", { minimumFractionDigits: 4 })}
                       </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-3 bg-background/30 rounded-xl border border-primary/5">
+                         <p className="text-[8px] font-black text-primary/20 uppercase tracking-widest">Último Preço</p>
+                         <p className="text-xs font-black">R$ {ins.latestPrice?.toFixed(2)}</p>
+                      </div>
+                      <div className="p-3 bg-background/30 rounded-xl border border-primary/5">
+                         <p className="text-[8px] font-black text-primary/20 uppercase tracking-widest">Unidade</p>
+                         <p className="text-xs font-black uppercase text-secondary">{ins.latestQty} {ins.latestUnit}</p>
+                      </div>
                     </div>
                   </div>
                 </motion.div>

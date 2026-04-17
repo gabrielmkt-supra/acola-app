@@ -28,7 +28,6 @@ export const viewport: Viewport = {
 
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
-import { CloudSync } from "@/components/CloudSync";
 
 export default function RootLayout({
   children,
@@ -52,10 +51,6 @@ export default function RootLayout({
             `,
           }}
         />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=account_balance_wallet,add_box,arrow_back,arrow_forward,assignment,check,check_circle,close,cloud_done,delete,edit,edit_square,inventory_2,keyboard_arrow_down,local_offer,menu_book,payments,post_add,query_stats,receipt_long,schedule_send,shopping_basket,shopping_cart,smart_display,swap_horiz,sync,trending_up,upload,upload_file,warning"
-        />
       </head>
       <body className="min-h-full flex bg-background text-primary font-sans overflow-hidden transition-colors duration-300">
         <Sidebar />
@@ -65,7 +60,6 @@ export default function RootLayout({
             {children}
           </main>
         </div>
-        <CloudSync />
       </body>
     </html>
   );

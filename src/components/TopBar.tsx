@@ -43,11 +43,11 @@ export function TopBar() {
                     Produto / Estoque
                   </Link>
                   <Link 
-                    href="/pedidos"
+                    href="/vendas"
                     className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-primary hover:bg-secondary/20 rounded-xl transition-colors border-t border-primary/5"
                   >
-                    <span className="material-symbols-outlined text-lg">payments</span>
-                    Pedidos / Vendas
+                    <span className="material-symbols-outlined text-lg">shopping_cart</span>
+                    Realizar Venda
                   </Link>
                 </div>
               </div>
