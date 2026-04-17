@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 interface RecipeIngredient {
@@ -20,12 +20,15 @@ interface RecipeIngredient {
 
 export default function NovoProduto() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("id");
+
   const [viewMode, setViewMode] = useState<"selection" | "new" | "restock" | "import">("selection");
   const [nome, setNome] = useState("");
   const [categoria, setCategoria] = useState("Trufa");
   const [precoVenda, setPrecoVenda] = useState(0);
   const [estoqueInicial, setEstoqueInicial] = useState(0);
-  const [rendimento, setRendimento] = useState(1); // Novo campo de rendimento
+  const [rendimento, setRendimento] = useState(1);
   const [foto, setFoto] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -35,6 +38,60 @@ export default function NovoProduto() {
   const [inventory, setInventory] = useState<any[]>([]);
   const [subtipo, setSubtipo] = useState<"premium" | "classico" | "">("premium");
   const [toasts, setToasts] = useState<{ id: number; message: string; type: "alert" | "success" }[]>([]);
+
+  // Carregar dados para edição
+  useEffect(() => {
+    if (editId) {
+      const loadEditData = async () => {
+        setIsSaving(true);
+        try {
+          // 1. Buscar produto no banco
+          const { data: prod, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('id', editId)
+            .single();
+
+          if (error) throw error;
+
+          if (prod) {
+            setNome(prod.name);
+            setCategoria(prod.category || "Trufa");
+            setSubtipo((prod.subtype as any) || "premium");
+            setPrecoVenda(Number(prod.price || 0));
+            setEstoqueInicial(Number(prod.stock || 0));
+            setFoto(prod.image || "");
+            setViewMode("new"); // Abre direto na calculadora
+
+            // 2. Tentar carregar receita (Banco de dados ou LocalStorage fallback)
+            // Se houver uma coluna 'recipe' no banco, usamos ela.
+            // Caso contrário, buscamos no LocalStorage (onde o app antigo salvava)
+            if (prod.recipe) {
+              const recipeData = typeof prod.recipe === 'string' ? JSON.parse(prod.recipe) : prod.recipe;
+              setIngredientes(recipeData.items || []);
+              setRendimento(recipeData.rendimento || 1);
+            } else {
+              const savedReceitas = localStorage.getItem("acola_receitas");
+              if (savedReceitas) {
+                const all = JSON.parse(savedReceitas);
+                const localData = all[editId];
+                if (localData) {
+                  setIngredientes(localData.items || []);
+                  setRendimento(localData.rendimento || 1);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Erro ao carregar produto para edição:", err);
+          addToast("Não foi possível carregar o produto.", "alert");
+        } finally {
+          setIsSaving(false);
+        }
+      };
+      loadEditData();
+    }
+  }, [editId]);
 
   const addToast = (message: string, type: "alert" | "success" = "alert") => {
     const id = Date.now();
@@ -290,23 +347,71 @@ export default function NovoProduto() {
     setIsSaving(true);
     
     try {
-      // 1. Preparar objeto do produto consolidado para o Supabase
-      const { error } = await supabase
-        .from('products')
-        .insert([{
-          name: nome,
-          category: categoria,
-          subtype: categoria === "Geladinho" ? subtipo : "",
-          cost: Number(custoTotal),
-          price: Number(precoVenda),
-          stock: Number(estoqueInicial),
-          image: foto || `https://ui-avatars.com/api/?name=${encodeURIComponent(nome)}&background=2a2a2a&color=c9a84c&bold=true&size=128`,
-          status: 'active'
-        }]);
+      const recipePayload = {
+        items: ingredientes,
+        rendimento: rendimento
+      };
 
-      if (error) throw error;
+      const productPayload: any = {
+        name: nome,
+        category: categoria,
+        subtype: categoria === "Geladinho" ? subtipo : "",
+        cost: Number(custoTotal),
+        price: Number(precoVenda),
+        stock: Number(estoqueInicial),
+        image: foto || `https://ui-avatars.com/api/?name=${encodeURIComponent(nome)}&background=2a2a2a&color=c9a84c&bold=true&size=128`,
+        status: 'active',
+        recipe: recipePayload // Tentativa de salvar como JSONB
+      };
 
-      addToast("Produto cadastrado com sucesso!", "success");
+      let error;
+      
+      if (editId) {
+        // MODO EDIÇÃO: Atualizar
+        const { error: updateError } = await supabase
+          .from('products')
+          .update(productPayload)
+          .eq('id', editId);
+        error = updateError;
+      } else {
+        // MODO NOVO: Inserir
+        const { error: insertError } = await supabase
+          .from('products')
+          .insert([productPayload]);
+        error = insertError;
+      }
+
+      if (error) {
+        // Tratar erro específico de coluna inexistente (recipe)
+        if (error.message?.includes('recipe') || error.code === '42703') {
+           console.warn("Coluna 'recipe' não encontrada no banco. Salvando receita no LocalStorage.");
+           // Fallback: Salvar receita localmente para não perder dados
+           const savedReceitas = localStorage.getItem("acola_receitas");
+           const all = savedReceitas ? JSON.parse(savedReceitas) : {};
+           
+           // Precisamos do ID se for novo produto (neste caso ainda não temos o ID gerado pelo banco se falhar aqui)
+           // Então o fallback só é ideal para Edição ou se ignorarmos o erro de salvamento de receita no banco.
+           
+           // Tentar salvar apenas os campos básicos primeiro para garantir persistência do produto
+           const { recipe, ...basicPayload } = productPayload;
+           const { error: retryError } = editId 
+            ? await supabase.from('products').update(basicPayload).eq('id', editId)
+            : await supabase.from('products').insert([basicPayload]).select();
+           
+           if (retryError) throw retryError;
+           
+           // Agora salvar ingredientes no LocalStorage (usando ID do produto gerado ou editId)
+           const actualId = editId; // Se for novo, precisaremos do retorno do select acima para pegar o ID real
+           if (actualId) {
+             all[actualId] = recipePayload;
+             localStorage.setItem("acola_receitas", JSON.stringify(all));
+           }
+        } else {
+           throw error;
+        }
+      }
+
+      addToast(editId ? "Produto atualizado com sucesso!" : "Produto cadastrado com sucesso!", "success");
 
       // Feedback visual
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -495,8 +600,12 @@ export default function NovoProduto() {
             <span className="material-symbols-outlined">arrow_back</span>
           </Link>
           <div>
-            <h1 className="text-xl font-black text-primary tracking-tight uppercase">Produto / Estoque</h1>
-            <p className="text-[10px] font-bold text-primary/40 uppercase tracking-widest leading-none mt-1">Gestão de Inventário</p>
+            <h1 className="text-xl font-black text-primary tracking-tight uppercase">
+              {editId ? "Edição de Produto" : "Produto / Estoque"}
+            </h1>
+            <p className="text-[10px] font-bold text-primary/40 uppercase tracking-widest leading-none mt-1">
+              {editId ? `Alterando: ${nome || "Carregando..."}` : "Gestão de Inventário"}
+            </p>
           </div>
         </div>
 
@@ -721,7 +830,7 @@ export default function NovoProduto() {
                   disabled={isSaving}
                   className="w-full h-14 bg-secondary text-primary rounded-2xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-secondary/90 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-lg shadow-secondary/20 disabled:opacity-50"
                 >
-                  {isSaving ? "SALVANDO..." : "SALVAR PRODUTO"}
+                  {isSaving ? "SALVANDO..." : (editId ? "ATUALIZAR PRODUTO" : "SALVAR PRODUTO")}
                 </button>
               </div>
 

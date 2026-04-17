@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 // Utility for conditional classes
@@ -13,6 +14,7 @@ function cn(...inputs: any[]) {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("Todos os Itens");
   const [salesPeriod, setSalesPeriod] = useState<"dia" | "semana" | "mes">("dia");
   const [purchasePeriod, setPurchasePeriod] = useState<"dia" | "semana" | "mes">("dia");
@@ -516,11 +518,11 @@ export default function Home() {
                         </td>
                         <td className="px-6 py-5 text-right">
                           <button
-                            onClick={() => openEditProductModal(item)}
-                            title="Editar produto"
+                            onClick={() => router.push(`/novo-produto?id=${item.id}`)}
+                            title="Editar produto e receita"
                             className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-variant/60 text-primary/30 hover:bg-secondary/15 hover:text-secondary transition-all duration-200 hover:scale-110 active:scale-95 cursor-pointer border border-primary/5"
                           >
-                            <span className="material-symbols-outlined text-[16px]">edit</span>
+                            <span className="material-symbols-outlined text-[16px]">edit_note</span>
                           </button>
                         </td>
                       </motion.tr>
