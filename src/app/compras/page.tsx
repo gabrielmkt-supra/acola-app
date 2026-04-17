@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -74,8 +76,8 @@ export default function Compras() {
       timestamp: d.date,
       items: d.item_name,
       total: Number(d.total_price),
-      place: "Local não informado", // Tabela purchases não tem place no schema original, mas podemos adaptar ou concatenar
-      payer: "Gabriel/Lara",
+      place: "Local não informado", 
+      payer: "Gabriel",
       method: "Débito"
     })));
 

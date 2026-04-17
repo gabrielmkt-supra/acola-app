@@ -1,8 +1,11 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
 // Utility for conditional classes
@@ -11,6 +14,7 @@ function cn(...inputs: any[]) {
 }
 
 interface Insumo {
+  id?: string;
   name: string;
   pricePerBaseUnit: number;
   baseUnit: "g" | "ml" | "un";
@@ -36,7 +40,19 @@ export default function GestaoInsumos() {
 
   const fetchInsumos = async () => {
     const { data } = await supabase.from('insumos').select('*').order('nome');
-    if (data) setInsumos(data);
+    if (data) {
+      setInsumos(data.map(d => ({
+        id: d.id,
+        name: d.nome,
+        pricePerBaseUnit: Number(d.custo_unitario),
+        baseUnit: d.unidade,
+        latestPrice: Number(d.custo_unitario),
+        latestQty: 0,
+        latestUnit: d.unidade,
+        lastPurchaseDate: d.created_at,
+        createdAt: d.created_at
+      })));
+    }
   };
 
   useEffect(() => {
@@ -73,12 +89,12 @@ export default function GestaoInsumos() {
   };
 
   const handleDelete = async (nameToDelete: string) => {
-    const insumo = insumos.find(i => i.nome === nameToDelete);
+    const insumo = insumos.find(i => i.name === nameToDelete);
     if (!insumo) return;
 
     if (!confirm(`Excluir o insumo "${nameToDelete}"? Isso pode afetar receitas vinculadas.`)) return;
     
-    const { error } = await supabase.from('insumos').delete().eq('id', (insumo as any).id || "");
+    const { error } = await supabase.from('insumos').delete().eq('id', insumo.id || "");
     if (error) {
       // Se não tiver ID (veio de sync antigo), tenta por nome
       await supabase.from('insumos').delete().eq('nome', nameToDelete);
