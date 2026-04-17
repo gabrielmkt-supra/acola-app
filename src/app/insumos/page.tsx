@@ -33,6 +33,7 @@ export default function GestaoInsumos() {
   const [searchTerm, setSearchTerm] = useState("");
   
   // Form states
+  const [editingInsumo, setEditingInsumo] = useState<Insumo | null>(null);
   const [name, setName] = useState("");
   const [initialPrice, setInitialPrice] = useState(0);
   const [initialQty, setInitialQty] = useState(0);
@@ -59,6 +60,31 @@ export default function GestaoInsumos() {
     fetchInsumos();
   }, []);
 
+  const handleOpenCreateModal = () => {
+    setEditingInsumo(null);
+    setName("");
+    setInitialPrice(0);
+    setInitialQty(0);
+    setUnit("g");
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (insumo: Insumo) => {
+    setEditingInsumo(insumo);
+    setName(insumo.name);
+    
+    // Tentativa de reverter custo base para algo visual (aproximado)
+    // Se for 'g' ou 'ml', a unidade base é 1. Se for 'un', também.
+    // Mas o usuário cadastrou como initialQty e initialPrice.
+    // Como não salvamos a Qty original separadamente no DB (apenas o custo unitário), 
+    // vamos assumir que o usuário quer editar o custo unitário diretamente ou re-inserir.
+    // Para facilitar, vamos carregar o custo unitário como price e 1 como qty.
+    setInitialPrice(insumo.pricePerBaseUnit);
+    setInitialQty(1);
+    setUnit(insumo.baseUnit as any);
+    setIsModalOpen(true);
+  };
+
   const handleSaveInsumo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || initialPrice <= 0 || initialQty <= 0) return;
@@ -68,23 +94,27 @@ export default function GestaoInsumos() {
     
     const pricePerBaseUnit = initialPrice / Math.max(1, baseQty);
 
-    const { error } = await supabase.from('insumos').insert([{
+    const payload = {
       nome: name,
-      unidade: unit,
+      unidade: (unit === "kg" || unit === "g") ? "g" : (unit === "L" || unit === "ml" ? "ml" : "un"),
       custo_unitario: pricePerBaseUnit
-    }]);
+    };
 
-    if (error) {
-      alert("Erro ao salvar insumo: " + error.message);
-      return;
+    if (editingInsumo) {
+      const { error } = await supabase.from('insumos').update(payload).eq('id', editingInsumo.id);
+      if (error) {
+        alert("Erro ao atualizar insumo: " + error.message);
+        return;
+      }
+    } else {
+      const { error } = await supabase.from('insumos').insert([payload]);
+      if (error) {
+        alert("Erro ao salvar insumo: " + error.message);
+        return;
+      }
     }
 
     fetchInsumos();
-
-    // Reset
-    setName("");
-    setInitialPrice(0);
-    setInitialQty(0);
     setIsModalOpen(false);
   };
 
@@ -96,11 +126,73 @@ export default function GestaoInsumos() {
     
     const { error } = await supabase.from('insumos').delete().eq('id', insumo.id || "");
     if (error) {
-      // Se não tiver ID (veio de sync antigo), tenta por nome
       await supabase.from('insumos').delete().eq('nome', nameToDelete);
     }
     
     setInsumos(insumos.filter(i => i.name !== nameToDelete));
+  };
+
+  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split("\n");
+      
+      const newInsumos = [];
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // Suporta tanto vírgula quanto ponto e vírgula
+        const separator = line.includes(";") ? ";" : ",";
+        const [nome, preco, qtd, unidade] = line.split(separator);
+        
+        const p = parseFloat(preco.replace(",", "."));
+        const q = parseFloat(qtd.replace(",", "."));
+        const u = unidade?.trim().toLowerCase();
+
+        if (isNaN(p) || isNaN(q)) continue;
+
+        let baseQty = q;
+        let finalBaseUnit: "g" | "ml" | "un" = "un";
+
+        if (u === "kg" || u === "kilo" || u === "quilo" || u === "kg") {
+          baseQty = q * 1000;
+          finalBaseUnit = "g";
+        } else if (u === "g" || u === "gr" || u === "gramas") {
+          finalBaseUnit = "g";
+        } else if (u === "l" || u === "litro" || u === "litros") {
+          baseQty = q * 1000;
+          finalBaseUnit = "ml";
+        } else if (u === "ml" || u === "milis") {
+          finalBaseUnit = "ml";
+        } else {
+          finalBaseUnit = "un";
+        }
+
+        const pricePerBaseUnit = p / Math.max(0.0001, baseQty);
+
+        newInsumos.push({
+          nome: nome.trim(),
+          unidade: finalBaseUnit,
+          custo_unitario: pricePerBaseUnit
+        });
+      }
+
+      if (newInsumos.length > 0) {
+        const { error } = await supabase.from('insumos').insert(newInsumos);
+        if (error) {
+          alert("Erro ao importar: " + error.message);
+        } else {
+          alert(`${newInsumos.length} insumos importados com sucesso!`);
+          fetchInsumos();
+        }
+      }
+    };
+    reader.readAsText(file);
   };
 
   const filteredInsumos = insumos.filter(i => 
@@ -134,13 +226,21 @@ export default function GestaoInsumos() {
                 />
              </div>
 
-            <button 
-              onClick={() => setIsModalOpen(true)}
-              className="px-8 py-4 bg-secondary text-primary rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-secondary/10 hover:scale-105 active:scale-95 transition-all flex items-center gap-3"
-            >
-              <span className="material-symbols-outlined text-sm">add</span>
-              Novo Insumo
-            </button>
+            <div className="flex items-center gap-3">
+              <label className="cursor-pointer px-6 py-4 bg-primary/5 text-primary rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-primary/10 transition-all flex items-center gap-3">
+                <span className="material-symbols-outlined text-sm">table_view</span>
+                Importar Planilha
+                <input type="file" accept=".csv" onChange={handleImportCSV} className="hidden" />
+              </label>
+
+              <button 
+                onClick={handleOpenCreateModal}
+                className="px-8 py-4 bg-secondary text-primary rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-secondary/10 hover:scale-105 active:scale-95 transition-all flex items-center gap-3"
+              >
+                <span className="material-symbols-outlined text-sm">add</span>
+                Novo Insumo
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -167,12 +267,20 @@ export default function GestaoInsumos() {
                     <div className="w-12 h-12 rounded-2xl bg-primary/5 flex items-center justify-center text-secondary group-hover:bg-secondary group-hover:text-primary transition-all">
                       <span className="material-symbols-outlined">inventory_2</span>
                     </div>
-                    <button 
-                      onClick={() => handleDelete(ins.name)}
-                      className="w-8 h-8 rounded-lg text-primary/10 hover:text-error hover:bg-error/5 transition-all flex items-center justify-center"
-                    >
-                      <span className="material-symbols-outlined text-sm">delete</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                       <button 
+                        onClick={() => handleOpenEditModal(ins)}
+                        className="w-8 h-8 rounded-lg text-primary/10 hover:text-secondary hover:bg-secondary/5 transition-all flex items-center justify-center"
+                      >
+                        <span className="material-symbols-outlined text-sm">edit</span>
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(ins.name)}
+                        className="w-8 h-8 rounded-lg text-primary/10 hover:text-error hover:bg-error/5 transition-all flex items-center justify-center"
+                      >
+                        <span className="material-symbols-outlined text-sm">delete</span>
+                      </button>
+                    </div>
                   </div>
 
                   <h3 className="text-lg font-black uppercase italic tracking-tight truncate">{ins.name}</h3>
@@ -204,7 +312,7 @@ export default function GestaoInsumos() {
         </div>
       </main>
 
-      {/* Modal de Cadastro */}
+      {/* Modal de Cadastro/Edição */}
       <AnimatePresence>
         {isModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
@@ -213,7 +321,7 @@ export default function GestaoInsumos() {
               animate={{ opacity: 1 }} 
               exit={{ opacity: 0 }}
               onClick={() => setIsModalOpen(false)}
-              className="absolute inset-0 bg-background/80 backdrop-blur-md"
+              className="absolute inset-0 bg-background/95 backdrop-blur-2xl"
             />
             <motion.div 
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -223,7 +331,9 @@ export default function GestaoInsumos() {
             >
               <div className="p-8 bg-secondary text-primary flex justify-between items-center">
                 <div>
-                  <h3 className="text-xl font-black uppercase italic tracking-tighter">Novo Insumo</h3>
+                  <h3 className="text-xl font-black uppercase italic tracking-tighter">
+                    {editingInsumo ? "Editar Insumo" : "Novo Insumo"}
+                  </h3>
                   <p className="text-[10px] font-bold opacity-60 uppercase tracking-widest mt-1">Cadastro Mestre</p>
                 </div>
                 <button onClick={() => setIsModalOpen(false)} className="w-10 h-10 rounded-full bg-primary/10 hover:bg-primary/20 flex items-center justify-center transition-all">
@@ -245,10 +355,12 @@ export default function GestaoInsumos() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-primary/40 uppercase tracking-widest ml-1">Valor inicial</label>
+                    <label className="text-[10px] font-black text-primary/40 uppercase tracking-widest ml-1">
+                      {editingInsumo ? "Custo Base" : "Valor inicial"}
+                    </label>
                     <input 
                       type="number"
-                      step="0.01"
+                      step="0.0001"
                       required
                       value={initialPrice || ""}
                       onChange={(e) => setInitialPrice(Number(e.target.value))}
@@ -257,26 +369,30 @@ export default function GestaoInsumos() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-primary/40 uppercase tracking-widest ml-1">Quantidade</label>
-                    <div className="flex gap-2">
+                    <label className="text-[10px] font-black text-primary/40 uppercase tracking-widest ml-1">Quantidade / Medida</label>
+                    <div className="flex gap-2 p-1 bg-background border border-primary/5 rounded-2xl items-center">
                       <input 
                         type="number"
                         required
                         value={initialQty || ""}
                         onChange={(e) => setInitialQty(Number(e.target.value))}
-                        className="flex-1 p-4 bg-background border border-primary/5 rounded-2xl focus:ring-2 focus:ring-secondary/50 outline-none text-sm font-black transition-all"
+                        className="flex-1 p-3 bg-transparent outline-none text-sm font-black transition-all"
                         placeholder="Ex: 395"
                       />
+                      <div className="w-px h-6 bg-primary/10" />
                       <select 
                         value={unit}
                         onChange={(e: any) => setUnit(e.target.value)}
-                        className="w-20 p-4 bg-background border border-primary/5 rounded-2xl text-xs font-black outline-none appearance-none cursor-pointer"
+                        className="w-16 p-3 bg-transparent text-[10px] font-black uppercase outline-none cursor-pointer appearance-none text-secondary"
                       >
                         <option value="g">g</option>
                         <option value="kg">kg</option>
                         <option value="ml">ml</option>
-                        <option value="L">L</option>
+                        <option value="L">l</option>
                         <option value="un">un</option>
+                        <option value="und">und</option>
+                        <option value="cx">cx</option>
+                        <option value="pct">pct</option>
                       </select>
                     </div>
                   </div>
@@ -294,13 +410,14 @@ export default function GestaoInsumos() {
                   type="submit"
                   className="w-full py-6 bg-secondary text-primary rounded-3xl font-black text-[12px] uppercase tracking-[0.3em] shadow-2xl shadow-secondary/20 hover:scale-[1.02] active:scale-95 transition-all"
                 >
-                  Cadastrar Insumo
+                  {editingInsumo ? "Salvar Alterações" : "Cadastrar Insumo"}
                 </button>
               </form>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+
     </div>
   );
 }
