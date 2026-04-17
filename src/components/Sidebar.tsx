@@ -32,7 +32,6 @@ const navItems: NavItem[] = [
       { name: "FLUXO DE CAIXA", href: "/fluxo-caixa", icon: "query_stats" },
     ]
   },
-  { name: "RECEITAS", href: "/receitas", icon: "menu_book" },
   { name: "TUTORIAIS", href: "/tutoriais", icon: "smart_display" },
 ];
 

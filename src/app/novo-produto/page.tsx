@@ -39,6 +39,18 @@ function NovoProdutoContent() {
   const [subtipo, setSubtipo] = useState<"premium" | "classico" | "">("premium");
   const [toasts, setToasts] = useState<{ id: number; message: string; type: "alert" | "success" }[]>([]);
 
+  // Função para converter dados antigos para o novo formato
+  const transformLegacyRecipe = (items: any[]) => {
+    return items.map(item => ({
+      id: item.id || `ing-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      name: item.name || item.insumoName || "",
+      type: (item.type || item.scaleType || "lote") as 'lote' | 'unidade' | 'inteiro',
+      qty: Number(item.qty || 0),
+      unit: item.unit || "g",
+      unitCost: Number(item.unitCost || 0)
+    }));
+  };
+
   // Carregar dados para edição
   useEffect(() => {
     if (editId) {
@@ -64,11 +76,10 @@ function NovoProdutoContent() {
             setViewMode("new"); // Abre direto na calculadora
 
             // 2. Tentar carregar receita (Banco de dados ou LocalStorage fallback)
-            // Se houver uma coluna 'recipe' no banco, usamos ela.
-            // Caso contrário, buscamos no LocalStorage (onde o app antigo salvava)
             if (prod.recipe) {
               const recipeData = typeof prod.recipe === 'string' ? JSON.parse(prod.recipe) : prod.recipe;
-              setIngredientes(recipeData.items || []);
+              const normalizedItems = transformLegacyRecipe(recipeData.items || []);
+              setIngredientes(normalizedItems);
               setRendimento(recipeData.rendimento || 1);
             } else {
               const savedReceitas = localStorage.getItem("acola_receitas");
@@ -76,7 +87,8 @@ function NovoProdutoContent() {
                 const all = JSON.parse(savedReceitas);
                 const localData = all[editId];
                 if (localData) {
-                  setIngredientes(localData.items || []);
+                  const normalizedItems = transformLegacyRecipe(localData.items || []);
+                  setIngredientes(normalizedItems);
                   setRendimento(localData.rendimento || 1);
                 }
               }
