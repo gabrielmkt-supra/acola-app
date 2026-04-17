@@ -398,20 +398,23 @@ export default function GestaoInsumos() {
                         placeholder="Ex: 395"
                       />
                       <div className="w-px h-6 bg-primary/10" />
-                      <select 
-                        value={unit}
-                        onChange={(e: any) => setUnit(e.target.value)}
-                        className="w-16 p-3 bg-transparent text-[10px] font-black uppercase outline-none cursor-pointer appearance-none text-secondary"
-                      >
-                        <option value="g">g</option>
-                        <option value="kg">kg</option>
-                        <option value="ml">ml</option>
-                        <option value="L">l</option>
-                        <option value="un">un</option>
-                        <option value="und">und</option>
-                        <option value="cx">cx</option>
-                        <option value="pct">pct</option>
-                      </select>
+                      <div className="relative flex items-center">
+                        <select 
+                          value={unit}
+                          onChange={(e: any) => setUnit(e.target.value)}
+                          className="pl-3 pr-8 py-3 bg-primary/5 text-secondary text-[10px] font-black uppercase outline-none cursor-pointer rounded-xl border border-primary/10 hover:border-secondary/50 transition-all appearance-none"
+                        >
+                          <option value="g">g</option>
+                          <option value="kg">kg</option>
+                          <option value="ml">ml</option>
+                          <option value="L">l</option>
+                          <option value="un">un</option>
+                          <option value="und">und</option>
+                          <option value="cx">cx</option>
+                          <option value="pct">pct</option>
+                        </select>
+                        <span className="material-symbols-outlined absolute right-2 pointer-events-none text-secondary text-xs">keyboard_arrow_down</span>
+                      </div>
                     </div>
                   </div>
                 </div>
