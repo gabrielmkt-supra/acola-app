@@ -37,7 +37,16 @@ export default function PDVPage() {
   const [clientStreet, setClientStreet] = useState("");
   const [clientCity, setClientCity] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Cartão");
-  const [isFiado, setIsFiado] = useState(false); // Novo Estado para Fiado
+  const [isFiado, setIsFiado] = useState(false);
+
+  // MÁSCARA DE TELEFONE (BR)
+  const applyPhoneMask = (value: string) => {
+    if (!value) return "";
+    value = value.replace(/\D/g, ""); // Remove tudo que não é número
+    value = value.replace(/(\d{2})(\d)/, "($1) $2");
+    value = value.replace(/(\d{5})(\d)/, "$1-$2");
+    return value.substring(0, 15); // Limita ao formato (99) 99999-9999
+  };
 
   useEffect(() => {
     fetchProducts();
@@ -46,7 +55,7 @@ export default function PDVPage() {
   useEffect(() => {
     if (channel === "ifood") {
       setIsDelivery(true);
-      setIsFiado(false); // iFood nunca é fiado
+      setIsFiado(false);
       if (ifoodFeePct === 0) setIfoodFeePct(28.69);
     } else {
       setPlatformIncentives(0);
@@ -81,12 +90,10 @@ export default function PDVPage() {
         }
         return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item);
       }
-      
       if (product.stock <= 0) {
         alert("⚠️ Produto sem estoque disponível!");
         return prev;
       }
-      
       return [...prev, { id: product.id, name: product.name, price: product.price, qty: 1, category: product.category }];
     });
   };
@@ -98,7 +105,6 @@ export default function PDVPage() {
   const updateQty = (id: string, delta: number) => {
     const product = products.find(p => p.id === id);
     if (!product) return;
-
     setCart(prev => prev.map(item => {
       if (item.id === id) {
         const newQty = Math.max(1, item.qty + delta);
@@ -134,15 +140,11 @@ export default function PDVPage() {
 
   const handleFinalize = async () => {
     if (cart.length === 0) return;
-    
-    // Validar nome do cliente se for fiado
     if (isFiado && !clientName) {
       alert("⚠️ Para vendas fiado, o Nome do Cliente é obrigatório!");
       return;
     }
-
     setIsSaving(true);
-
     try {
       const timestamp = new Date().toISOString();
       const itemsForOrder = cart.map(item => ({
@@ -152,7 +154,6 @@ export default function PDVPage() {
         quantity: item.qty,
         category: item.category
       }));
-
       const orderPayload = {
         client_name: clientName || (channel === "ifood" ? "Cliente iFood" : "Cliente Balcão"),
         client_phone: clientPhone,
@@ -171,10 +172,8 @@ export default function PDVPage() {
         delivery_date: isDelivery ? deliveryDate : null,
         timestamp: timestamp
       };
-
       const { data: newOrder, error: orderError } = await supabase.from('orders').insert([orderPayload]).select().single();
       if (orderError) throw orderError;
-
       for (const item of cart) {
         const product = products.find(p => p.id === item.id);
         if (product) {
@@ -192,7 +191,6 @@ export default function PDVPage() {
           }]);
         }
       }
-
       alert(isFiado ? "✅ Venda registrada como PENDENTE!" : "✅ Venda finalizada com sucesso!");
       router.push("/");
     } catch (e: any) {
@@ -209,13 +207,7 @@ export default function PDVPage() {
         <div className="flex gap-4 mb-6">
           <div className="relative flex-1">
             <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-primary/30">search</span>
-            <input 
-              type="text"
-              placeholder="Buscar por produto ou categoria..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-4 bg-surface border border-primary/5 rounded-[24px] text-sm font-bold text-primary focus:ring-2 focus:ring-secondary/20 outline-none transition-all"
-            />
+            <input type="text" placeholder="Buscar por produto ou categoria..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-surface border border-primary/5 rounded-[24px] text-sm font-bold text-primary focus:ring-2 focus:ring-secondary/20 outline-none transition-all" />
           </div>
           <div className="flex bg-surface p-1 rounded-[24px] border border-primary/5">
              <button onClick={() => { setChannel("balcao"); setIfoodFeePct(0); }} className={cn("px-6 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-widest transition-all", channel === "balcao" ? "bg-secondary text-primary-foreground shadow-lg" : "text-primary/30 hover:bg-primary/5")}>Venda Direta</button>
@@ -263,7 +255,13 @@ export default function PDVPage() {
             </div>
             <div className="relative col-span-2">
                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">call</span>
-               <input type="text" placeholder="WhatsApp / Contato" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30 transition-all" />
+               <input 
+                 type="text" 
+                 placeholder="WhatsApp (xx) xxxxx-xxxx" 
+                 value={clientPhone} 
+                 onChange={(e) => setClientPhone(applyPhoneMask(e.target.value))} 
+                 className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30 transition-all" 
+               />
             </div>
 
             <AnimatePresence>
@@ -283,14 +281,12 @@ export default function PDVPage() {
                 {channel === "ifood" ? (
                   <div className="col-span-2 py-2.5 bg-red-600/10 border border-red-600/20 rounded-xl text-center text-[10px] font-black text-red-600 uppercase">Pagamento via iFood App</div>
                 ) : (
-                  <>
-                    <select value={paymentMethod} onChange={(e) => { setPaymentMethod(e.target.value); setIsFiado(e.target.value === "Fiado"); }} className="col-span-2 py-2.5 px-4 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30">
-                      <option value="Cartão">Cartão</option>
-                      <option value="Pix">Pix</option>
-                      <option value="Dinheiro">Dinheiro</option>
-                      <option value="Fiado">Pagar Depois (Fiado)</option>
-                    </select>
-                  </>
+                  <select value={paymentMethod} onChange={(e) => { setPaymentMethod(e.target.value); setIsFiado(e.target.value === "Fiado"); }} className="col-span-2 py-2.5 px-4 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30">
+                    <option value="Cartão">Cartão</option>
+                    <option value="Pix">Pix</option>
+                    <option value="Dinheiro">Dinheiro</option>
+                    <option value="Fiado">Pagar Depois (Fiado)</option>
+                  </select>
                 )}
               </div>
             </div>
