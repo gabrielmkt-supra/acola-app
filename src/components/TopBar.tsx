@@ -89,16 +89,6 @@ export function TopBar() {
               </div>
             </div>
 
-            {/* Profile (Compact) */}
-            <div className="flex items-center gap-3 pl-2 border-l border-primary/5">
-              <div className="w-10 h-10 rounded-xl border-2 border-secondary/50 overflow-hidden bg-surface-variant flex items-center justify-center cursor-pointer hover:border-secondary transition-all shadow-sm">
-                <img 
-                  alt="User profile" 
-                  className="w-full h-full object-cover"
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuBA0pIVbxduwKKI_K35EFhBbtiaTbG5WgJL2LPz-UUvuAaw_GWRiQe1_SzjQ6ZcizODBOmJzptclMvVMjRCXtacuzL8cLemcn7tqEnnhHL36UCxi-ypwXCLedHflStanqTyO6leWvZmOXkR0fFDq30A-DiUOd0xeNxuwiRCqHCi_wOiAiQPr6Qb4xaed3ZbxUrwDljTrUuMo6YbouPoUZo1-BSlZTS9eP-6zApiDGMgRUTRUIfL5rvkrxlHOBsOAgwcckxAl1YQ"
-                />
-              </div>
-            </div>
           </div>
         </div>
       </div>
