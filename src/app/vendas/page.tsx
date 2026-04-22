@@ -26,8 +26,8 @@ export default function PDVPage() {
   // Modo de Venda e Entrega
   const [channel, setChannel] = useState<"balcao" | "ifood">("balcao");
   const [isDelivery, setIsDelivery] = useState(false);
-  const [ifoodFeePct, setIfoodFeePct] = useState(23); 
-  const [platformIncentives, setPlatformIncentives] = useState(0); // Novo: Incentivos iFood
+  const [ifoodFeePct, setIfoodFeePct] = useState(28.69); // Novo Padrão
+  const [platformIncentives, setPlatformIncentives] = useState(0); 
   const [deliveryFee, setDeliveryFee] = useState(0);
   const [deliveryDate, setDeliveryDate] = useState("");
   
@@ -43,10 +43,11 @@ export default function PDVPage() {
   }, []);
 
   useEffect(() => {
-    if (channel === "ifood") setIsDelivery(true);
-    else {
+    if (channel === "ifood") {
+      setIsDelivery(true);
+      if (ifoodFeePct === 0) setIfoodFeePct(28.69);
+    } else {
       setPlatformIncentives(0);
-      setIfoodFeePct(0);
     }
   }, [channel]);
 
@@ -92,9 +93,37 @@ export default function PDVPage() {
     }));
   };
 
-  const calculateSubtotal = () => cart.reduce((acc, curr) => acc + (curr.price * curr.qty), 0);
+  // LÓGICA DE COMBO: 3 geladinhos por 27,99
+  const calculateSubtotal = () => {
+    let total = 0;
+    let geladinhosQty = 0;
+    
+    // Primeiro, somamos itens que NÃO são geladinhos e contamos os geladinhos
+    cart.forEach(item => {
+      if (item.category.toLowerCase().includes("geladinho")) {
+        geladinhosQty += item.qty;
+      } else {
+        total += item.price * item.qty;
+      }
+    });
+
+    // Aplicamos o combo nos geladinhos
+    const combos = Math.floor(geladinhosQty / 3);
+    const remaining = geladinhosQty % 3;
+    
+    // Valor fixo do combo: 27.99 por cada 3
+    total += combos * 27.99;
+    
+    // Os restantes custam o preço normal (usamos o preço do primeiro geladinho encontrado no carrinho)
+    const firstGeladinho = cart.find(i => i.category.toLowerCase().includes("geladinho"));
+    if (firstGeladinho && remaining > 0) {
+      total += remaining * firstGeladinho.price;
+    }
+
+    return total;
+  };
+
   const subtotal = calculateSubtotal();
-  
   const platformFeesAmount = channel === "ifood" ? (subtotal * (ifoodFeePct / 100)) : 0;
   const totalAmount = subtotal + (isDelivery ? deliveryFee : 0);
   const netAmount = totalAmount - platformFeesAmount - platformIncentives;
@@ -172,7 +201,7 @@ export default function PDVPage() {
                Venda Direta
              </button>
              <button 
-               onClick={() => { setChannel("ifood"); setIfoodFeePct(23); }}
+               onClick={() => { setChannel("ifood"); setIfoodFeePct(28.69); }}
                className={cn(
                  "px-6 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2",
                  channel === "ifood" ? "bg-red-600 text-white shadow-lg shadow-red-600/20" : "text-primary/30 hover:bg-primary/5"
@@ -328,24 +357,24 @@ export default function PDVPage() {
                 <div className="space-y-1">
                   <label className="text-[8px] font-black uppercase text-primary/40 ml-1">Taxa iFood (%)</label>
                   <div className="relative">
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-red-500/40">%</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-primary/20">%</span>
                     <input 
                       type="number"
                       value={ifoodFeePct}
                       onChange={(e) => setIfoodFeePct(Number(e.target.value))}
-                      className="w-full px-4 py-2.5 bg-red-500/5 border border-red-500/10 rounded-xl text-[11px] font-black text-red-500 outline-none"
+                      className="w-full px-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-black text-primary outline-none"
                     />
                   </div>
                 </div>
                 <div className="space-y-1">
                   <label className="text-[8px] font-black uppercase text-primary/40 ml-1">Incentivos iFood (R$)</label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-red-500/40">R$</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-primary/20">R$</span>
                     <input 
                       type="number"
                       value={platformIncentives}
                       onChange={(e) => setPlatformIncentives(Number(e.target.value))}
-                      className="w-full pl-9 pr-4 py-2.5 bg-red-500/5 border border-red-500/10 rounded-xl text-[11px] font-black text-red-500 outline-none"
+                      className="w-full pl-9 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-black text-primary outline-none"
                     />
                   </div>
                 </div>
@@ -379,7 +408,9 @@ export default function PDVPage() {
                     <span className="w-6 text-center text-[10px] font-black">{item.qty}</span>
                     <button onClick={() => updateQty(item.id, 1)} className="w-5 h-5 flex items-center justify-center text-primary/40"><span className="material-symbols-outlined text-xs">add</span></button>
                   </div>
-                  <button onClick={() => removeFromCart(item.id)} className="text-error/30"><span className="material-symbols-outlined text-xs">delete</span></button>
+                  <button onClick={() => removeFromCart(item.id)} className="text-error/30 hover:text-error transition-all cursor-pointer">
+                    <span className="material-symbols-outlined text-xs">delete</span>
+                  </button>
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -420,7 +451,7 @@ export default function PDVPage() {
                </div>
                {channel === "ifood" && (
                  <div className="text-right">
-                    <p className="text-[8px] font-black text-success uppercase tracking-widest mb-1">Líquido Atelier</p>
+                    <p className="text-[8px] font-black text-success uppercase tracking-widest mb-1">Líquido Acolá</p>
                     <p className="text-lg font-black text-success tracking-tight">R$ {formatUnitCost(netAmount)}</p>
                  </div>
                )}
