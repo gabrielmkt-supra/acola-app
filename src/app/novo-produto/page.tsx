@@ -270,10 +270,14 @@ function NovoProdutoContent() {
   });
 
   const subtotalReceita = custosIngredientes.reduce((acc, curr) => acc + curr, 0);
-  const margemSeguranca = subtotalReceita * 0.05;
-  const custoTotal = subtotalReceita + margemSeguranca;
+  const taxaIndireta = subtotalReceita * (appConfigs.indirect_cost_pct / 100);
+  const custoTotal = subtotalReceita + taxaIndireta;
   const lucroBruto = precoVenda - custoTotal;
   const margemLucro = precoVenda > 0 ? (lucroBruto / precoVenda) * 100 : 0;
+
+  // Preço sugerido considerando Markup e Taxa de Cartão
+  const precoBaseComMarkup = custoTotal * (1 + appConfigs.markup / 100);
+  const precoSugerido = precoBaseComMarkup / (1 - appConfigs.card_fee_pct / 100);
 
   return (
     <div className="flex flex-col h-full">
@@ -443,7 +447,7 @@ function NovoProdutoContent() {
                     </div>
                     <div className="bg-secondary/10 p-4 rounded-2xl border border-secondary/20">
                       <p className="text-[8px] font-black text-secondary uppercase tracking-widest mb-1">Sugestão</p>
-                      <p className="text-xl font-black text-secondary italic">R$ {formatUnitCost(custoTotal * (1 + appConfigs.markup / 100))}</p>
+                      <p className="text-xl font-black text-secondary italic">R$ {formatUnitCost(precoSugerido)}</p>
                     </div>
                   </div>
                 </div>
