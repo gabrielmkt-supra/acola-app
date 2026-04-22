@@ -41,7 +41,9 @@ function NovoProdutoContent() {
   const [toasts, setToasts] = useState<{ id: number; message: string; type: "alert" | "success" }[]>([]);
 
   // Função para converter dados antigos para o novo formato
-  const transformLegacyRecipe = (items: any[]) => {
+  const transformLegacyRecipe = (items: any) => {
+    if (!items || !Array.isArray(items)) return [];
+    
     return items.map(item => ({
       id: item.id || `ing-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: item.name || item.insumoName || "",
@@ -75,28 +77,38 @@ function NovoProdutoContent() {
             setFoto(prod.image || "");
             setViewMode("new");
 
-            // 2. Tentar carregar receita
-            if (prod.recipe) {
-              const recipeData = typeof prod.recipe === 'string' ? JSON.parse(prod.recipe) : prod.recipe;
-              setIngredientes(transformLegacyRecipe(recipeData.items || []));
-              setRendimento(recipeData.rendimento || 1);
-            } else {
+            // 2. Tentar carregar receita de forma robusta
+            let recipeSource = prod.recipe;
+            
+            // Se não tiver no banco, tenta no LocalStorage como Fallback
+            if (!recipeSource) {
               const savedReceitas = localStorage.getItem("acola_receitas");
               if (savedReceitas) {
-                const all = JSON.parse(savedReceitas);
-                // Tenta pelo ID primeiro
-                let localData = all[editId];
-                
-                // PLANO B: Se não achar pelo ID, tenta pelo Nome do Produto (útil para transições)
-                if (!localData) {
-                  const entryByName = Object.values(all).find((r: any) => r.productName === prod.name || r.name === prod.name);
-                  if (entryByName) localData = entryByName;
+                try {
+                  const all = JSON.parse(savedReceitas);
+                  recipeSource = all[editId] || Object.values(all).find((r: any) => r.productName === prod.name || r.name === prod.name);
+                } catch (e) {
+                  console.warn("Erro ao ler LocalStorage:", e);
                 }
+              }
+            }
 
-                if (localData) {
-                  setIngredientes(transformLegacyRecipe(localData.items || []));
-                  setRendimento(localData.rendimento || 1);
-                }
+            if (recipeSource) {
+              try {
+                const recipeData = typeof recipeSource === 'string' ? JSON.parse(recipeSource) : recipeSource;
+                
+                // Normalização: Encontrar os itens em diferentes possíveis formatos
+                const rawItems = Array.isArray(recipeData) 
+                  ? recipeData 
+                  : (recipeData.items || recipeData.ingredients || recipeData.componentes || []);
+                
+                setIngredientes(transformLegacyRecipe(rawItems));
+                
+                // Normalização do Rendimento
+                const yieldVal = recipeData.rendimento || recipeData.yield || recipeData.yieldQty || 1;
+                setRendimento(Number(yieldVal));
+              } catch (e) {
+                console.error("Erro ao processar dados da receita:", e);
               }
             }
           }
