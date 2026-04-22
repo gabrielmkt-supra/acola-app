@@ -44,8 +44,12 @@ export default function SyncPage() {
         
         const productsPayload = localProducts.map((p: any) => {
           const recipe = localRecipes[p.id] || Object.values(localRecipes).find((r: any) => r.productName === p.name);
+          
+          // Verifica se o ID é um UUID válido. Se não for (ex: PROD-123), deixa o Supabase gerar um novo.
+          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(p.id);
+          
           return {
-            id: p.id || undefined,
+            id: isUUID ? p.id : undefined,
             name: p.name,
             category: p.category,
             subtype: p.subtype,
