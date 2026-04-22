@@ -8,10 +8,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
-// Utility for conditional classes
-function cn(...inputs: any[]) {
-  return inputs.filter(Boolean).join(" ");
-}
+import { cn, formatUnitCost } from "@/lib/utils";
 
 interface Insumo {
   id?: string;
@@ -304,14 +301,14 @@ export default function GestaoInsumos() {
                     <div className="bg-background/50 p-4 rounded-2xl border border-primary/5">
                       <p className="text-[9px] font-black text-primary/20 uppercase tracking-widest mb-1">Custo por {ins.baseUnit}</p>
                       <p className="text-xl font-black text-secondary italic">
-                        R$ {ins.pricePerBaseUnit.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        R$ {formatUnitCost(ins.pricePerBaseUnit)}
                       </p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="p-3 bg-background/30 rounded-xl border border-primary/5">
                          <p className="text-[8px] font-black text-primary/20 uppercase tracking-widest">Último Preço</p>
-                         <p className="text-xs font-black">R$ {ins.latestPrice?.toFixed(2)}</p>
+                         <p className="text-xs font-black">R$ {formatUnitCost(ins.latestPrice)}</p>
                       </div>
                       <div className="p-3 bg-background/30 rounded-xl border border-primary/5">
                          <p className="text-[8px] font-black text-primary/20 uppercase tracking-widest">Unidade</p>
@@ -418,7 +415,7 @@ export default function GestaoInsumos() {
                 <div className="bg-primary/5 p-4 rounded-3xl border border-primary/5 text-center">
                    <p className="text-[9px] font-black text-primary/30 uppercase tracking-[0.2em] mb-1">Custo Projetado</p>
                    <p className="text-xl font-black italic">
-                     R$ {(initialPrice / (unit === 'kg' || unit === 'L' ? initialQty * 1000 : initialQty || 1)).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                     R$ {formatUnitCost(initialPrice / (unit === 'kg' || unit === 'L' ? initialQty * 1000 : initialQty || 1))}
                      <span className="text-[10px] text-primary/20 ml-2 uppercase">por { (unit === 'kg' || unit === 'g' ? 'g' : unit === 'L' || unit === 'ml' ? 'ml' : 'un') }</span>
                    </p>
                 </div>

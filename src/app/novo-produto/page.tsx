@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { cn, formatUnitCost } from "@/lib/utils";
 
 interface RecipeIngredient {
   id: string;
@@ -282,8 +283,8 @@ function NovoProdutoContent() {
           id: `PROD-${Date.now().toString().slice(-6)}-${idx}`,
           name: nome,
           category: categoria,
-          price: `R$${preco.toFixed(2)}`,
-          cost: `R$${custo.toFixed(2)}`,
+          price: `R$ ${formatUnitCost(preco)}`,
+          cost: `R$ ${formatUnitCost(custo)}`,
           stock,
           image: "",
           status: stock < 20 ? "ESTOQUE BAIXO" : "SAUDÁVEL",
@@ -842,7 +843,7 @@ function NovoProdutoContent() {
                     <div className="mt-4 space-y-1">
                       <div className="flex justify-between items-end">
                         <span className="text-[9px] font-bold opacity-60 uppercase mb-1">Custo Total:</span>
-                        <span className="text-xl font-black text-primary">R${custoTotal.toFixed(2)}</span>
+                        <span className="text-xl font-black text-primary">R$ {formatUnitCost(custoTotal)}</span>
                       </div>
                       <div className="flex justify-between items-end border-t border-primary/10 pt-2">
                         <span className="text-[9px] font-bold opacity-60 uppercase mb-1">Margem de Lucro:</span>
@@ -968,13 +969,13 @@ function NovoProdutoContent() {
                                            {ing.type === 'inteiro' ? 'Preço Emb.' : 'Custo Unit.'}
                                         </p>
                                         <p className="text-sm font-black text-primary italic leading-tight">
-                                           R$ {(ing.type === 'inteiro' ? (ing.packagePrice && ing.packagePrice > 1 ? ing.packagePrice : (ing.unitCost * (ing.packageQty || 1))) : itemCost).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                           R$ {formatUnitCost(ing.type === 'inteiro' ? (ing.packagePrice && ing.packagePrice > 1 ? ing.packagePrice : (ing.unitCost * (ing.packageQty || 1))) : itemCost)}
                                         </p>
                                      </div>
                                      <div className="text-right">
                                         <p className="text-[7px] font-black text-primary/20 uppercase tracking-widest leading-none">Total Item</p>
                                         <p className="text-[10px] font-bold text-primary/30 leading-tight">
-                                           R$ {(itemCost * rendimento).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                           R$ {formatUnitCost(itemCost * rendimento)}
                                         </p>
                                      </div>
                                   </div>
@@ -1316,6 +1317,4 @@ export default function NovoProduto() {
   );
 }
 
-function cn(...classes: any[]) {
-  return classes.filter(Boolean).join(" ");
-}
+// A função cn agora é importada de "@/lib/utils"

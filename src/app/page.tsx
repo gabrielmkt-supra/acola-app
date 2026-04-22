@@ -8,10 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-// Utility for conditional classes
-function cn(...inputs: any[]) {
-  return inputs.filter(Boolean).join(" ");
-}
+import { cn, formatUnitCost } from "@/lib/utils";
 
 export default function Home() {
   const router = useRouter();
@@ -456,8 +453,8 @@ export default function Home() {
                             {item.category}
                           </span>
                         </td>
-                        <td className="px-6 py-5 text-xs font-bold text-primary/40 tracking-tight">R$ {Number(item.cost || 0).toFixed(2).replace(".", ",")}</td>
-                        <td className="px-6 py-5 text-sm font-black text-primary">R$ {Number(item.price || 0).toFixed(2).replace(".", ",")}</td>
+                        <td className="px-6 py-5 text-xs font-bold text-primary/40 tracking-tight">R$ {formatUnitCost(Number(item.cost || 0))}</td>
+                        <td className="px-6 py-5 text-sm font-black text-primary">R$ {formatUnitCost(Number(item.price || 0))}</td>
                         <td className="px-6 py-5">
                           <div className="flex items-center gap-2">
                             <div className="w-24 h-1.5 bg-background rounded-full overflow-hidden border border-primary/5">
