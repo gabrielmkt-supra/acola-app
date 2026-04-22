@@ -64,7 +64,7 @@ export function Sidebar() {
       {/* Logo Area */}
       <motion.div 
         whileHover={{ scale: 1.05 }}
-        className="w-12 h-12 rounded-2xl shadow-sm flex items-center justify-center mb-8 shrink-0 cursor-pointer overflow-hidden"
+        className="w-12 h-12 rounded-2xl shadow-sm flex items-center justify-center mb-8 shrink-0 cursor-pointer overflow-hidden dark:border-2 dark:border-secondary border-transparent"
       >
         <img src="/logo.png" alt="Acolá Logo" className="w-full h-full object-cover" />
       </motion.div>
