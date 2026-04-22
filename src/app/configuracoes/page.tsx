@@ -131,18 +131,26 @@ export default function ConfigPage() {
         </div>
       </header>
 
-      {/* Tabs */}
-      <div className="flex gap-2 p-1 bg-surface border border-primary/5 rounded-[24px] w-fit shadow-sm overflow-x-auto max-w-full no-scrollbar">
-        {(["perfil", "precificacao", "categorias", "sistema"] as const).map(tab => (
+      {/* Tabs - Reformulated for better visibility */}
+      <div className="flex flex-wrap gap-3 p-2 bg-surface/50 border border-primary/10 rounded-[32px] w-full md:w-fit shadow-inner overflow-x-auto no-scrollbar">
+        {[
+          { id: "perfil", label: "Perfil", icon: "person" },
+          { id: "precificacao", label: "Financeiro", icon: "payments" },
+          { id: "categorias", label: "Produtos", icon: "inventory_2" },
+          { id: "sistema", label: "Sincronia", icon: "cloud_sync" }
+        ].map(tab => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
             className={cn(
-              "px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap",
-              activeTab === tab ? "bg-secondary text-primary shadow-lg" : "text-primary/30 hover:text-primary hover:bg-primary/5"
+              "flex items-center gap-3 px-8 py-4 rounded-[22px] text-[10px] font-black uppercase tracking-[0.2em] transition-all whitespace-nowrap border-2",
+              activeTab === tab.id 
+                ? "bg-secondary text-primary border-secondary shadow-xl shadow-secondary/10 scale-[1.02]" 
+                : "text-primary/40 border-transparent hover:text-primary hover:bg-primary/5"
             )}
           >
-            {tab === "perfil" ? "Perfil" : tab === "precificacao" ? "Financeiro" : tab === "categorias" ? "Produtos" : "Sincronia"}
+            <span className="material-symbols-outlined text-lg">{tab.icon}</span>
+            {tab.label}
           </button>
         ))}
       </div>
@@ -448,10 +456,15 @@ export default function ConfigPage() {
                     <div className="flex flex-col gap-4">
                       <Link 
                         href="/sync"
-                        className="flex items-center justify-center gap-4 py-6 bg-gradient-to-r from-secondary/20 to-secondary/5 text-primary rounded-3xl text-xs font-black uppercase tracking-[0.2em] hover:from-secondary/30 hover:to-secondary/10 transition-all border border-secondary/20 shadow-xl shadow-secondary/5 group"
+                        className="flex items-center justify-center gap-4 py-8 bg-gradient-to-br from-secondary via-secondary/80 to-secondary/40 text-primary rounded-[32px] text-sm font-black uppercase tracking-[0.3em] hover:scale-[1.02] hover:shadow-2xl hover:shadow-secondary/20 transition-all border-4 border-white/10 group shadow-xl"
                       >
-                        <span className="material-symbols-outlined text-secondary group-hover:rotate-180 transition-transform duration-700">cloud_sync</span>
-                        Migrar Tudo para Nuvem
+                        <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center group-hover:rotate-180 transition-transform duration-700">
+                          <span className="material-symbols-outlined text-primary text-2xl font-black">database</span>
+                        </div>
+                        <div className="flex flex-col items-start leading-none">
+                          <span className="text-sm">SUBIR PARA BASE</span>
+                          <span className="text-[8px] opacity-40 tracking-[0.4em] mt-1">MIGRAR DADOS LOCAIS</span>
+                        </div>
                       </Link>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
