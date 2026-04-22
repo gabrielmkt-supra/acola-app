@@ -65,18 +65,18 @@ export function TopBar() {
               <div className="absolute top-full right-0 pt-2 opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto transition-all duration-200 z-[60]">
                 <div className="bg-surface rounded-2xl border border-primary/5 shadow-2xl p-2 min-w-[220px]">
                   <Link 
-                    href="/vendas"
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-primary hover:bg-secondary/20 rounded-xl transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-lg">shopping_cart</span>
-                    Nova Venda (PDV)
-                  </Link>
-                  <Link 
                     href="/novo-produto"
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-primary hover:bg-secondary/20 rounded-xl transition-colors border-t border-primary/5"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-primary hover:bg-secondary/20 rounded-xl transition-colors"
                   >
                     <span className="material-symbols-outlined text-lg">add_box</span>
                     Novo Produto
+                  </Link>
+                  <Link 
+                    href="/vendas"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-primary hover:bg-secondary/20 rounded-xl transition-colors border-t border-primary/5"
+                  >
+                    <span className="material-symbols-outlined text-lg">shopping_cart</span>
+                    Nova Venda (PDV)
                   </Link>
                 </div>
               </div>
