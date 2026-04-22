@@ -180,7 +180,7 @@ export default function PDVPage() {
             amount: -item.qty, // Negativo pois é saída
             previous_stock: previousStock,
             final_stock: newStock,
-            note: `VENDA: Pedido #${newOrder.id.split('-').pop()} (${channel.toUpperCase()})`
+            note: `VENDA: ${orderPayload.client_name.toUpperCase()} - Pedido #${newOrder.id.split('-').pop()} (${channel.toUpperCase()})`
           }]);
         }
       }
