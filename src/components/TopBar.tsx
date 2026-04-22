@@ -10,6 +10,7 @@ export function TopBar() {
 
   // Lógica de Títulos Dinâmicos
   const getPageTitle = () => {
+    if (pathname.includes("/vendas")) return { title: "Ponto de Venda", subtitle: "Realizar Pedido", back: true };
     if (pathname.includes("/configuracoes")) return { title: "Configurações", subtitle: "Personalize seu Atelier", back: true };
     if (pathname.includes("/novo-produto")) return { title: "Produto / Estoque", subtitle: "Gestão de Inventário", back: true };
     if (pathname.includes("/insumos")) return { title: "Gestão de Insumos", subtitle: "Controle de Matéria-Prima", back: true };
@@ -64,18 +65,18 @@ export function TopBar() {
               <div className="absolute top-full right-0 pt-2 opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto transition-all duration-200 z-[60]">
                 <div className="bg-surface rounded-2xl border border-primary/5 shadow-2xl p-2 min-w-[220px]">
                   <Link 
-                    href="/novo-produto"
+                    href="/vendas"
                     className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-primary hover:bg-secondary/20 rounded-xl transition-colors"
                   >
-                    <span className="material-symbols-outlined text-lg">add_box</span>
-                    Produto / Estoque
+                    <span className="material-symbols-outlined text-lg">shopping_cart</span>
+                    Nova Venda (PDV)
                   </Link>
                   <Link 
-                    href="/fluxo-caixa"
+                    href="/novo-produto"
                     className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-primary hover:bg-secondary/20 rounded-xl transition-colors border-t border-primary/5"
                   >
-                    <span className="material-symbols-outlined text-lg">query_stats</span>
-                    Fluxo de Caixa
+                    <span className="material-symbols-outlined text-lg">add_box</span>
+                    Novo Produto
                   </Link>
                 </div>
               </div>
