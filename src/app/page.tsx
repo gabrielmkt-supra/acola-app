@@ -317,6 +317,52 @@ export default function Home() {
   // Fallback de imagem
   const getImageSrc = (item: any) => item.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name)}&background=2a2a2a&color=c9a84c&bold=true&size=128`;
 
+  const handleDeepClean = async () => {
+    const productName = 'Ninho com Nutella';
+    if (!confirm(`⚠️ AÇÃO IRREVERSÍVEL: Deseja apagar TODAS as vendas, compras e registros vinculados ao produto "${productName}" e depois excluí-lo permanentemente?`)) return;
+
+    setIsLoading(true);
+    try {
+      const { data: product } = await supabase.from('products').select('id').eq('name', productName).single();
+      if (!product) {
+        alert("Produto não encontrado no banco de dados!");
+        setIsLoading(false);
+        return;
+      }
+      const productId = product.id;
+
+      // 1. Limpar Movimentações
+      await supabase.from('inventory_movements').delete().eq('product_id', productId);
+      
+      // 2. Limpar Compras
+      await supabase.from('purchases').delete().eq('product_id', productId);
+      
+      // 3. Limpar Vendas (Pedidos)
+      const { data: orders } = await supabase.from('orders').select('id, items');
+      if (orders) {
+        for (const order of orders) {
+          const items = order.items as any[];
+          if (items && items.some((i: any) => i.id === productId)) {
+            await supabase.from('orders').delete().eq('id', order.id);
+          }
+        }
+      }
+
+      // 4. Deletar o Produto
+      const { error } = await supabase.from('products').delete().eq('id', productId);
+      
+      if (error) throw error;
+
+      setInventory(prev => prev.filter(item => item.id !== productId));
+      alert(`✅ Sucesso! "${productName}" e todo seu histórico foram removidos.`);
+    } catch (err: any) {
+      console.error(err);
+      alert("Erro na limpeza: " + err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Page Content Scroll Area */}
@@ -429,7 +475,15 @@ export default function Home() {
           {/* Table Section */}
           <div className="bg-surface rounded-2xl border border-primary/5 shadow-sm overflow-hidden flex flex-col flex-1 min-h-[500px]">
             <div className="p-6 flex flex-wrap gap-4 items-center justify-between border-b border-primary/5 shrink-0">
-              <h3 className="text-xl font-black text-primary uppercase italic tracking-tight">Estoque Real</h3>
+              <div className="flex items-center gap-4">
+                <h3 className="text-xl font-black text-primary uppercase italic tracking-tight">Estoque Real</h3>
+                <button 
+                  onClick={handleDeepClean}
+                  className="bg-error/20 text-error px-3 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-error hover:text-white transition-all animate-pulse"
+                >
+                  Limpeza Profunda (Ninho)
+                </button>
+              </div>
               <div className="flex gap-2">
                 {["Todos os Itens", ...availableCategories].map((tab) => (
                   <button 
