@@ -26,7 +26,7 @@ export default function PDVPage() {
   // Modo de Venda e Entrega
   const [channel, setChannel] = useState<"balcao" | "ifood">("balcao");
   const [isDelivery, setIsDelivery] = useState(false);
-  const [ifoodFeePct, setIfoodFeePct] = useState(28.69); // Novo Padrão
+  const [ifoodFeePct, setIfoodFeePct] = useState(28.69); 
   const [platformIncentives, setPlatformIncentives] = useState(0); 
   const [deliveryFee, setDeliveryFee] = useState(0);
   const [deliveryDate, setDeliveryDate] = useState("");
@@ -98,7 +98,6 @@ export default function PDVPage() {
     let total = 0;
     let geladinhosQty = 0;
     
-    // Primeiro, somamos itens que NÃO são geladinhos e contamos os geladinhos
     cart.forEach(item => {
       if (item.category.toLowerCase().includes("geladinho")) {
         geladinhosQty += item.qty;
@@ -107,14 +106,10 @@ export default function PDVPage() {
       }
     });
 
-    // Aplicamos o combo nos geladinhos
     const combos = Math.floor(geladinhosQty / 3);
     const remaining = geladinhosQty % 3;
-    
-    // Valor fixo do combo: 27.99 por cada 3
     total += combos * 27.99;
     
-    // Os restantes custam o preço normal (usamos o preço do primeiro geladinho encontrado no carrinho)
     const firstGeladinho = cart.find(i => i.category.toLowerCase().includes("geladinho"));
     if (firstGeladinho && remaining > 0) {
       total += remaining * firstGeladinho.price;
@@ -133,6 +128,18 @@ export default function PDVPage() {
     setIsSaving(true);
 
     try {
+      const timestamp = new Date().toISOString();
+      
+      // Mapear itens para usar 'quantity' (padrão do sistema para estorno)
+      const itemsForOrder = cart.map(item => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.qty,
+        category: item.category
+      }));
+
+      // 1. Criar o pedido
       const orderPayload = {
         client_name: clientName || (channel === "ifood" ? "Cliente iFood" : "Cliente Balcão"),
         client_phone: clientPhone,
@@ -141,7 +148,7 @@ export default function PDVPage() {
         total: totalAmount,
         payment_method: channel === "ifood" ? "iFood App" : paymentMethod,
         payment_status: "pago",
-        items: cart,
+        items: itemsForOrder,
         channel: channel,
         platform_fees: platformFeesAmount,
         platform_incentives: platformIncentives,
@@ -149,21 +156,36 @@ export default function PDVPage() {
         net_amount: netAmount,
         is_delivery: isDelivery,
         delivery_date: isDelivery ? deliveryDate : null,
-        timestamp: new Date().toISOString()
+        timestamp: timestamp
       };
 
-      const { error: orderError } = await supabase.from('orders').insert([orderPayload]);
+      const { data: newOrder, error: orderError } = await supabase.from('orders').insert([orderPayload]).select().single();
       if (orderError) throw orderError;
 
+      // 2. Abater estoque e Registrar Movimentação para cada item
       for (const item of cart) {
         const product = products.find(p => p.id === item.id);
         if (product) {
-          const newStock = Math.max(0, product.stock - item.qty);
+          const previousStock = Number(product.stock);
+          const newStock = Math.max(0, previousStock - item.qty);
+          
+          // Atualiza Produto
           await supabase.from('products').update({ stock: newStock }).eq('id', item.id);
+
+          // Registra na Central de Fluxo
+          await supabase.from('inventory_movements').insert([{
+            product_id: item.id,
+            product_name: item.name,
+            type: "Saída",
+            amount: -item.qty, // Negativo pois é saída
+            previous_stock: previousStock,
+            final_stock: newStock,
+            note: `VENDA: Pedido #${newOrder.id.split('-').pop()} (${channel.toUpperCase()})`
+          }]);
         }
       }
 
-      alert("✅ Venda computada com sucesso! Redirecionando...");
+      alert("✅ Venda computada com sucesso!");
       router.push("/");
 
     } catch (e: any) {
