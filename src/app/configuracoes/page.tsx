@@ -442,18 +442,7 @@ export default function ConfigPage() {
                     </div>
 
                     <div className="flex flex-col gap-4">
-                      <Link 
-                        href="/sync"
-                        className="flex items-center justify-center gap-4 py-8 bg-gradient-to-br from-secondary via-secondary/80 to-secondary/40 text-primary rounded-[32px] text-sm font-black uppercase tracking-[0.3em] hover:scale-[1.02] hover:shadow-2xl hover:shadow-secondary/20 transition-all border-4 border-white/10 group shadow-xl"
-                      >
-                        <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center group-hover:rotate-180 transition-transform duration-700">
-                          <span className="material-symbols-outlined text-primary text-2xl font-black">database</span>
-                        </div>
-                        <div className="flex flex-col items-start leading-none">
-                          <span className="text-sm">SUBIR PARA BASE</span>
-                          <span className="text-[8px] opacity-40 tracking-[0.4em] mt-1">MIGRAR DADOS LOCAIS</span>
-                        </div>
-                      </Link>
+                      {/* Sincronização automática ativa */}
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <button 

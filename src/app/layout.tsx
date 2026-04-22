@@ -28,6 +28,7 @@ export const viewport: Viewport = {
 
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
+import { AutoMigrateWrapper } from "@/components/AutoMigrateWrapper";
 
 export default function RootLayout({
   children,
@@ -53,6 +54,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex bg-background text-primary font-sans overflow-hidden transition-colors duration-300">
+        <AutoMigrateWrapper />
         <Sidebar />
         <div className="flex-1 flex flex-col h-screen transition-all duration-300 bg-background overflow-hidden border-l border-primary/5">
           <TopBar />
