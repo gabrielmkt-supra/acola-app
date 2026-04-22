@@ -407,25 +407,6 @@ function NovoProdutoContent() {
                   </div>
                 </div>
 
-                <div className="bg-secondary text-primary p-6 rounded-[32px] shadow-xl shadow-secondary/10 flex flex-col justify-between h-44 relative overflow-hidden group">
-                  <div className="relative z-10">
-                    <p className="text-[10px] font-black opacity-40 uppercase tracking-widest">Resumo Financeiro</p>
-                    <div className="mt-4 space-y-2">
-                      <div className="flex justify-between items-end">
-                        <span className="text-[9px] font-bold opacity-60 uppercase">Custo:</span>
-                        <span className="text-lg font-black italic">R$ {formatUnitCost(custoTotal)}</span>
-                      </div>
-                      <div className="flex justify-between items-end">
-                        <span className="text-[9px] font-bold opacity-60 uppercase">Margem:</span>
-                        <span className="text-lg font-black italic">{margemLucro.toFixed(0)}%</span>
-                      </div>
-                      <div className="mt-2 pt-2 border-t border-primary/10 flex justify-between items-end">
-                        <span className="text-[9px] font-bold opacity-60 uppercase">Sugestão:</span>
-                        <span className="text-xl font-black italic">R$ {formatUnitCost(custoTotal * (1 + appConfigs.markup / 100))}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
 
                 <button 
                   onClick={handleSave}
