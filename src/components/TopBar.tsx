@@ -58,9 +58,12 @@ export function TopBar() {
               <button className="w-10 h-10 flex items-center justify-center rounded-xl bg-secondary text-primary hover:bg-secondary/90 transition-all shadow-sm">
                 <span className="material-symbols-outlined font-black">notifications</span>
               </button>
-              <button className="w-10 h-10 flex items-center justify-center rounded-xl bg-secondary text-primary hover:bg-secondary/90 transition-all shadow-sm">
+              <Link 
+                href="/configuracoes"
+                className="w-10 h-10 flex items-center justify-center rounded-xl bg-secondary text-primary hover:bg-secondary/90 transition-all shadow-sm"
+              >
                 <span className="material-symbols-outlined font-black">settings</span>
-              </button>
+              </Link>
             </div>
 
             {/* Profile */}

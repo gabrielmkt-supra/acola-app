@@ -9,10 +9,12 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 import { cn, formatUnitCost } from "@/lib/utils";
+import { getSettings } from "@/lib/settings";
 
 export default function Home() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("Todos os Itens");
+  const [availableCategories, setAvailableCategories] = useState<string[]>(["Geladinho", "Trufa"]);
   const [salesPeriod, setSalesPeriod] = useState<"dia" | "semana" | "mes">("dia");
   const [purchasePeriod, setPurchasePeriod] = useState<"dia" | "semana" | "mes">("dia");
   const [inventory, setInventory] = useState<any[]>([]);
@@ -51,6 +53,11 @@ export default function Home() {
 
   useEffect(() => {
     fetchData();
+    const loadConfigs = async () => {
+      const s = await getSettings();
+      if (s.categories) setAvailableCategories(s.categories);
+    };
+    loadConfigs();
   }, []);
 
   // Lógicas de Cálculo Dinâmico
@@ -384,7 +391,7 @@ export default function Home() {
             <div className="p-6 flex flex-wrap gap-4 items-center justify-between border-b border-primary/5 shrink-0">
               <h3 className="text-xl font-black text-primary uppercase italic tracking-tight">Estoque Real</h3>
               <div className="flex gap-2">
-                {["Todos os Itens", "Geladinho", "Trufa"].map((tab) => (
+                {["Todos os Itens", ...availableCategories].map((tab) => (
                   <button 
                     key={tab}
                     onClick={() => setActiveTab(tab)}

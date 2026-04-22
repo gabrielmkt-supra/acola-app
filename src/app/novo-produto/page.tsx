@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { cn, formatUnitCost } from "@/lib/utils";
+import { getSettings, AppSettings, DEFAULT_SETTINGS } from "@/lib/settings";
 
 interface RecipeIngredient {
   id: string;
@@ -39,6 +40,7 @@ function NovoProdutoContent() {
   const [inventory, setInventory] = useState<any[]>([]);
   const [subtipo, setSubtipo] = useState<"premium" | "classico" | "">("premium");
   const [toasts, setToasts] = useState<{ id: number; message: string; type: "alert" | "success" }[]>([]);
+  const [appConfigs, setAppConfigs] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   // Função para converter dados antigos para o novo formato
   const transformLegacyRecipe = (items: any) => {
@@ -53,6 +55,15 @@ function NovoProdutoContent() {
       unitCost: Number(item.unitCost || 0)
     }));
   };
+
+  // Carregar configurações globais
+  useEffect(() => {
+    const loadConfigs = async () => {
+      const s = await getSettings();
+      setAppConfigs(s);
+    };
+    loadConfigs();
+  }, []);
 
   // Determinar modo inicial e carregar dados para edição
   useEffect(() => {
@@ -782,13 +793,22 @@ function NovoProdutoContent() {
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-black text-primary/40 uppercase tracking-widest ml-1">Categoria</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {["Trufa", "Geladinho"].map(cat => (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {appConfigs.categories.map(cat => (
                           <button 
                             key={cat}
                             type="button"
-                            onClick={() => { setCategoria(cat); if (cat === "Geladinho") setSubtipo("premium"); else setSubtipo(""); }}
-                            className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border cursor-pointer ${categoria === cat ? "bg-secondary text-primary border-primary" : "bg-background text-primary/40 border-primary/5 hover:bg-primary/5"}`}
+                            onClick={() => { 
+                              setCategoria(cat); 
+                              if (cat === "Geladinho") setSubtipo("premium"); 
+                              else setSubtipo(""); 
+                            }}
+                            className={cn(
+                              "py-3 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all border cursor-pointer",
+                              categoria === cat 
+                                ? "bg-secondary text-primary border-primary shadow-md" 
+                                : "bg-background text-primary/40 border-primary/5 hover:bg-primary/5"
+                            )}
                           >
                             {cat}
                           </button>
@@ -858,9 +878,14 @@ function NovoProdutoContent() {
                         <span className="text-xl font-black text-primary">R$ {formatUnitCost(custoTotal)}</span>
                       </div>
                       <div className="flex justify-between items-end border-t border-primary/10 pt-2">
-                        <span className="text-[9px] font-bold opacity-60 uppercase mb-1">Margem de Lucro:</span>
                         <span className="text-xl font-black text-primary">
                           {precoVenda > 0 ? (((precoVenda - custoTotal) / precoVenda) * 100).toFixed(0) : 0}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-end bg-primary/10 -mx-6 px-6 py-2">
+                        <span className="text-[9px] font-bold text-primary/40 uppercase mb-1">Preço Sugerido ({appConfigs.markup}% markup):</span>
+                        <span className="text-xl font-black text-primary italic">
+                          R$ {formatUnitCost(custoTotal * (1 + appConfigs.markup / 100))}
                         </span>
                       </div>
                     </div>
