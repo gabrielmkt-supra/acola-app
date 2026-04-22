@@ -419,7 +419,7 @@ function NovoProdutoContent() {
 
               <div className="flex-1 bg-surface rounded-[32px] border border-primary/5 shadow-sm overflow-hidden flex flex-col min-h-[600px]">
                 <div className="bg-surface-variant/10 p-6 m-6 rounded-[32px] border border-primary/5 flex flex-col md:flex-row gap-6 items-center">
-                  <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4 w-full">
+                  <div className="flex-1 grid grid-cols-2 md:grid-cols-5 gap-4 w-full">
                     <div className="bg-background/40 p-4 rounded-2xl border border-primary/5">
                       <p className="text-[8px] font-black text-primary/30 uppercase tracking-widest mb-1">Custo Total</p>
                       <p className="text-xl font-black text-primary italic">R$ {formatUnitCost(custoTotal)}</p>
@@ -440,6 +440,10 @@ function NovoProdutoContent() {
                       )}>
                         {margemLucro.toFixed(0)}%
                       </p>
+                    </div>
+                    <div className="bg-secondary/10 p-4 rounded-2xl border border-secondary/20">
+                      <p className="text-[8px] font-black text-secondary uppercase tracking-widest mb-1">Sugestão</p>
+                      <p className="text-xl font-black text-secondary italic">R$ {formatUnitCost(custoTotal * (1 + appConfigs.markup / 100))}</p>
                     </div>
                   </div>
                 </div>
@@ -475,8 +479,8 @@ function NovoProdutoContent() {
                   </div>
                </div>
 
-                <div className="flex-1 overflow-x-auto p-4 md:p-6">
-                  <div className="min-w-[800px] flex flex-col gap-3">
+                <div className="flex-1 overflow-x-auto p-4 md:p-8">
+                  <div className="min-w-[900px] flex flex-col gap-4">
                     <AnimatePresence>
                       {ingredientes.length === 0 ? (
                         <motion.div 
@@ -496,66 +500,66 @@ function NovoProdutoContent() {
                                initial={{ opacity: 0, y: 10 }}
                                animate={{ opacity: 1, y: 0 }}
                                exit={{ opacity: 0, scale: 0.95 }}
-                               className="p-4 bg-background/40 rounded-[28px] grid grid-cols-12 gap-4 items-center border border-primary/5 hover:border-secondary/20 transition-all shadow-sm"
+                               className="p-5 bg-background/40 rounded-[32px] grid grid-cols-12 gap-6 items-center border border-primary/5 hover:border-secondary/20 transition-all shadow-sm"
                             >
-                               <div className="col-span-3 space-y-1">
-                                  <label className="text-[8px] font-black text-primary/30 uppercase tracking-widest ml-1">Insumo</label>
+                               <div className="col-span-3 space-y-1.5">
+                                  <label className="text-[9px] font-black text-primary/30 uppercase tracking-widest ml-1">Insumo</label>
                                   <div className="relative">
                                     <input 
                                        list="master-insumos"
-                                       className="w-full bg-background/80 rounded-xl p-3.5 text-xs font-black outline-none border border-primary/10 focus:border-secondary transition-all text-primary"
+                                       className="w-full bg-background/80 rounded-2xl p-4 text-xs font-black outline-none border border-primary/10 focus:border-secondary transition-all text-primary"
                                        placeholder="Buscar..."
                                        value={ing.name}
                                        onChange={(e) => updateIngredient(ing.id, "name", e.target.value)}
                                     />
-                                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-primary/10 text-base">search</span>
+                                    <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-primary/10 text-lg">search</span>
                                   </div>
                                   <datalist id="master-insumos">
                                      {masterInsumos.map(mi => <option key={mi.id} value={mi.name} />)}
                                   </datalist>
                                </div>
 
-                               <div className="col-span-2 space-y-1">
-                                  <label className="text-[8px] font-black text-primary/30 uppercase tracking-widest ml-1">Uso</label>
-                                  <div className="flex bg-background/80 rounded-xl p-1 border border-primary/10 h-[48px] items-center">
+                               <div className="col-span-3 space-y-1.5">
+                                  <label className="text-[9px] font-black text-primary/30 uppercase tracking-widest ml-1">Tipo de Uso</label>
+                                  <div className="flex bg-background/80 rounded-2xl p-1.5 border border-primary/10 h-[54px] items-center">
                                      {(['lote', 'unidade', 'inteiro'] as const).map(type => (
                                        <button
                                          key={type}
                                          type="button"
                                          onClick={() => updateIngredient(ing.id, "type", type)}
                                          className={cn(
-                                           "flex-1 h-full rounded-lg text-[8px] font-black uppercase tracking-tighter transition-all",
-                                           ing.type === type ? "bg-secondary text-primary shadow-sm" : "text-primary/20 hover:text-primary"
+                                           "flex-1 h-full rounded-xl text-[9px] font-black uppercase tracking-tight transition-all",
+                                           ing.type === type ? "bg-secondary text-primary shadow-lg" : "text-primary/20 hover:text-primary hover:bg-primary/5"
                                          )}
                                        >
-                                         {type === 'lote' ? 'Lote' : type === 'unidade' ? 'Unit' : 'Int'}
+                                         {type === 'lote' ? 'Lote' : type === 'unidade' ? 'Unit' : 'Inteiro'}
                                        </button>
                                      ))}
                                   </div>
                                </div>
 
-                               <div className={cn("col-span-2 space-y-1", ing.type === 'inteiro' ? "opacity-20 pointer-events-none" : "")}>
-                                  <label className="text-[8px] font-black text-primary/30 uppercase tracking-widest ml-1">Qtd ({ing.unit})</label>
+                               <div className={cn("col-span-2 space-y-1.5", ing.type === 'inteiro' ? "opacity-20 pointer-events-none" : "")}>
+                                  <label className="text-[9px] font-black text-primary/30 uppercase tracking-widest ml-1">Qtd ({ing.unit})</label>
                                   <input 
                                      type="number"
                                      disabled={ing.type === 'inteiro'}
-                                     className="w-full h-[48px] bg-background/80 rounded-xl p-3 text-xs font-black outline-none border border-primary/10 focus:border-secondary text-center"
+                                     className="w-full h-[54px] bg-background/80 rounded-2xl p-4 text-sm font-black outline-none border border-primary/10 focus:border-secondary text-center"
                                      value={ing.qty || ""}
                                      onChange={(e) => updateIngredient(ing.id, "qty", Number(e.target.value))}
                                   />
                                </div>
 
-                               <div className="col-span-4">
-                                  <div className="bg-primary/5 rounded-[20px] px-5 py-2 border border-primary/5 flex justify-between items-center h-[48px]">
+                               <div className="col-span-3">
+                                  <div className="bg-primary/5 rounded-[24px] px-6 py-3 border border-primary/5 flex justify-between items-center h-[54px]">
                                      <div className="text-left">
-                                        <p className="text-[7px] font-black text-primary/20 uppercase tracking-widest leading-none mb-1">Custo Unit.</p>
-                                        <p className="text-xs font-black text-primary italic leading-tight">
+                                        <p className="text-[8px] font-black text-primary/20 uppercase tracking-widest leading-none mb-1">Custo</p>
+                                        <p className="text-sm font-black text-primary italic leading-tight">
                                            R$ {formatUnitCost(ing.type === 'inteiro' ? (ing.packagePrice && ing.packagePrice > 1 ? ing.packagePrice : (ing.unitCost * (ing.packageQty || 1))) : itemCost)}
                                         </p>
                                      </div>
-                                     <div className="w-px h-5 bg-primary/5 mx-2" />
+                                     <div className="w-px h-6 bg-primary/5" />
                                      <div className="text-right">
-                                        <p className="text-[7px] font-black text-secondary/30 uppercase tracking-widest leading-none mb-1">Subtotal</p>
+                                        <p className="text-[8px] font-black text-secondary/30 uppercase tracking-widest leading-none mb-1">Subtotal</p>
                                         <p className="text-xs font-black text-secondary italic leading-tight">
                                            R$ {formatUnitCost(itemCost * rendimento)}
                                         </p>
@@ -566,9 +570,9 @@ function NovoProdutoContent() {
                                <div className="col-span-1 flex justify-center">
                                   <button 
                                     onClick={() => removeIngredient(ing.id)} 
-                                    className="w-9 h-9 flex items-center justify-center rounded-lg bg-error/5 text-error/30 hover:bg-error hover:text-white transition-all cursor-pointer"
+                                    className="w-10 h-10 flex items-center justify-center rounded-xl bg-error/5 text-error/30 hover:bg-error hover:text-white transition-all cursor-pointer"
                                   >
-                                     <span className="material-symbols-outlined text-base">delete</span>
+                                     <span className="material-symbols-outlined text-lg">delete</span>
                                   </button>
                                </div>
                             </motion.div>
