@@ -64,9 +64,9 @@ export function Sidebar() {
       {/* Logo Area */}
       <motion.div 
         whileHover={{ scale: 1.05 }}
-        className="w-12 h-12 rounded-2xl bg-surface shadow-sm flex items-center justify-center mb-8 shrink-0 border border-primary/5 cursor-pointer overflow-hidden p-1"
+        className="w-12 h-12 rounded-2xl shadow-sm flex items-center justify-center mb-8 shrink-0 cursor-pointer overflow-hidden"
       >
-        <img src="/logo.png" alt="Acolá Logo" className="w-full h-full object-contain" />
+        <img src="/logo.png" alt="Acolá Logo" className="w-full h-full object-cover" />
       </motion.div>
 
       {/* Floating Dock Container */}
