@@ -257,7 +257,7 @@ export default function PDVPage() {
                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">call</span>
                <input 
                  type="text" 
-                 placeholder="WhatsApp (xx) xxxxx-xxxx" 
+                 placeholder="Telefone" 
                  value={clientPhone} 
                  onChange={(e) => setClientPhone(applyPhoneMask(e.target.value))} 
                  className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30 transition-all" 
