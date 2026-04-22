@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { cn, formatUnitCost } from "@/lib/utils";
-import { getSettings } from "@/lib/settings";
 
 interface CartItem {
   id: string;
@@ -24,10 +23,12 @@ export default function PDVPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   
-  // Modo de Venda
+  // Modo de Venda e Entrega
   const [channel, setChannel] = useState<"balcao" | "ifood">("balcao");
-  const [ifoodFeePct, setIfoodFeePct] = useState(23); // Padrão iFood
+  const [isDelivery, setIsDelivery] = useState(false);
+  const [ifoodFeePct, setIfoodFeePct] = useState(23); 
   const [deliveryFee, setDeliveryFee] = useState(0);
+  const [deliveryDate, setDeliveryDate] = useState("");
   
   // Dados do Cliente
   const [clientName, setClientName] = useState("");
@@ -39,6 +40,11 @@ export default function PDVPage() {
   useEffect(() => {
     fetchProducts();
   }, []);
+
+  // Ao mudar para iFood, entrega é automática
+  useEffect(() => {
+    if (channel === "ifood") setIsDelivery(true);
+  }, [channel]);
 
   const fetchProducts = async () => {
     setIsLoading(true);
@@ -85,9 +91,8 @@ export default function PDVPage() {
   const calculateSubtotal = () => cart.reduce((acc, curr) => acc + (curr.price * curr.qty), 0);
   const subtotal = calculateSubtotal();
   
-  // Cálculos iFood / Direta com Frete
   const platformFeesAmount = channel === "ifood" ? (subtotal * (ifoodFeePct / 100)) : 0;
-  const totalAmount = subtotal + deliveryFee;
+  const totalAmount = subtotal + (isDelivery ? deliveryFee : 0);
   const netAmount = totalAmount - platformFeesAmount;
 
   const handleFinalize = async () => {
@@ -95,27 +100,27 @@ export default function PDVPage() {
     setIsSaving(true);
 
     try {
-      // 1. Criar o pedido no Supabase
       const orderPayload = {
         client_name: clientName || (channel === "ifood" ? "Cliente iFood" : "Cliente Balcão"),
         client_phone: clientPhone,
-        client_address_street: clientStreet,
-        client_address_city: clientCity,
+        client_address_street: isDelivery ? clientStreet : "",
+        client_address_city: isDelivery ? clientCity : "",
         total: totalAmount,
         payment_method: channel === "ifood" ? "iFood App" : paymentMethod,
         payment_status: "pago",
         items: cart,
         channel: channel,
         platform_fees: platformFeesAmount,
-        delivery_fee: deliveryFee,
+        delivery_fee: isDelivery ? deliveryFee : 0,
         net_amount: netAmount,
+        is_delivery: isDelivery,
+        delivery_date: isDelivery ? deliveryDate : null,
         timestamp: new Date().toISOString()
       };
 
       const { error: orderError } = await supabase.from('orders').insert([orderPayload]);
       if (orderError) throw orderError;
 
-      // 2. Abater estoque
       for (const item of cart) {
         const product = products.find(p => p.id === item.id);
         if (product) {
@@ -124,7 +129,6 @@ export default function PDVPage() {
         }
       }
 
-      // 3. Sucesso e Redirecionamento
       alert("✅ Venda computada com sucesso! Redirecionando...");
       router.push("/");
 
@@ -218,9 +222,19 @@ export default function PDVPage() {
       {/* Direita: Carrinho */}
       <div className="w-[450px] bg-surface border-l border-primary/5 flex flex-col shadow-2xl">
         <div className="p-6 border-b border-primary/5 bg-background/30">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-black text-primary uppercase italic tracking-tighter">Carrinho / Cliente</h2>
-            <span className="bg-secondary text-primary px-3 py-1 rounded-full text-[9px] font-black">{cart.length} ITENS</span>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-black text-primary uppercase italic tracking-tighter">Pedido / Cliente</h2>
+            <div className="flex bg-background/50 p-1 rounded-xl border border-primary/5">
+               <button 
+                 onClick={() => setIsDelivery(false)}
+                 disabled={channel === "ifood"}
+                 className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all", !isDelivery ? "bg-primary text-secondary" : "text-primary/30")}
+               >Balcão</button>
+               <button 
+                 onClick={() => setIsDelivery(true)}
+                 className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all", isDelivery ? "bg-secondary text-primary" : "text-primary/30")}
+               >Entrega</button>
+            </div>
           </div>
           
           <div className="grid grid-cols-2 gap-3">
@@ -228,63 +242,80 @@ export default function PDVPage() {
                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">person</span>
                <input 
                  type="text" 
-                 placeholder="Nome Completo"
+                 placeholder="Nome do Cliente"
                  value={clientName}
                  onChange={(e) => setClientName(e.target.value)}
                  className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30 transition-all"
                />
             </div>
             
-            <div className="relative">
+            <div className="relative col-span-2">
                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">call</span>
                <input 
                  type="text" 
-                 placeholder="Telefone / WhatsApp"
+                 placeholder="WhatsApp / Contato"
                  value={clientPhone}
                  onChange={(e) => setClientPhone(e.target.value)}
                  className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30 transition-all"
                />
             </div>
 
-            <div className="relative">
-               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">location_city</span>
-               <input 
-                 type="text" 
-                 placeholder="Cidade"
-                 value={clientCity}
-                 onChange={(e) => setClientCity(e.target.value)}
-                 className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30 transition-all"
-               />
-            </div>
+            {/* CAMPOS CONDICIONAIS DE ENTREGA */}
+            <AnimatePresence>
+              {isDelivery && (
+                <motion.div 
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="col-span-2 grid grid-cols-2 gap-3 overflow-hidden"
+                >
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">location_city</span>
+                    <input 
+                      type="text" 
+                      placeholder="Cidade"
+                      value={clientCity}
+                      onChange={(e) => setClientCity(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30"
+                    />
+                  </div>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">calendar_today</span>
+                    <input 
+                      type="datetime-local" 
+                      value={deliveryDate}
+                      onChange={(e) => setDeliveryDate(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30"
+                    />
+                  </div>
+                  <div className="relative col-span-2">
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">home</span>
+                    <input 
+                      type="text" 
+                      placeholder="Endereço (Rua, Número, Bairro)"
+                      value={clientStreet}
+                      onChange={(e) => setClientStreet(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30"
+                    />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-[8px] font-black uppercase text-primary/40 ml-1">Taxa de Entrega (R$)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-primary/20">R$</span>
+                      <input 
+                        type="number"
+                        value={deliveryFee}
+                        onChange={(e) => setDeliveryFee(Number(e.target.value))}
+                        className="w-full pl-9 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-black text-primary outline-none"
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-            <div className="relative col-span-2">
-               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">home</span>
-               <input 
-                 type="text" 
-                 placeholder="Endereço (Rua, Número, Bairro)"
-                 value={clientStreet}
-                 onChange={(e) => setClientStreet(e.target.value)}
-                 className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30 transition-all"
-               />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 mt-4">
-            <div className="space-y-1">
-              <label className="text-[8px] font-black uppercase text-primary/40 ml-1">Taxa de Entrega (R$)</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-primary/20">R$</span>
-                <input 
-                  type="number"
-                  value={deliveryFee}
-                  onChange={(e) => setDeliveryFee(Number(e.target.value))}
-                  className="w-full pl-9 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-black text-primary outline-none focus:border-secondary/30"
-                />
-              </div>
-            </div>
-            
             {channel === "ifood" && (
-              <div className="space-y-1">
+              <div className="space-y-1 col-span-2">
                 <label className="text-[8px] font-black uppercase text-primary/40 ml-1">Taxa iFood (%)</label>
                 <div className="relative">
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-red-500/40">%</span>
@@ -300,41 +331,32 @@ export default function PDVPage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-primary/20 gap-4 opacity-40">
               <span className="material-symbols-outlined text-5xl">shopping_basket</span>
-              <p className="text-[9px] font-black uppercase tracking-widest">O carrinho está vazio</p>
+              <p className="text-[9px] font-black uppercase tracking-widest">Carrinho vazio</p>
             </div>
           ) : (
             <AnimatePresence>
               {cart.map((item) => (
                 <motion.div 
                   key={item.id}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="flex items-center gap-3 bg-background/50 p-3 rounded-2xl border border-primary/5 group"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="flex items-center gap-3 bg-background/50 p-3 rounded-2xl border border-primary/5"
                 >
                   <div className="flex-1">
-                    <h4 className="text-[10px] font-black text-primary uppercase tracking-tight mb-0.5 line-clamp-1">{item.name}</h4>
+                    <h4 className="text-[10px] font-black text-primary uppercase tracking-tight mb-0.5">{item.name}</h4>
                     <p className="text-[9px] font-bold text-secondary">R$ {formatUnitCost(item.price)}</p>
                   </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center bg-background rounded-lg border border-primary/5 p-0.5">
-                      <button onClick={() => updateQty(item.id, -1)} className="w-5 h-5 flex items-center justify-center hover:bg-primary/5 rounded text-primary/40 hover:text-primary transition-all">
-                        <span className="material-symbols-outlined text-xs">remove</span>
-                      </button>
-                      <span className="w-6 text-center text-[10px] font-black text-primary">{item.qty}</span>
-                      <button onClick={() => updateQty(item.id, 1)} className="w-5 h-5 flex items-center justify-center hover:bg-primary/5 rounded text-primary/40 hover:text-primary transition-all">
-                        <span className="material-symbols-outlined text-xs">add</span>
-                      </button>
-                    </div>
-                    <button onClick={() => removeFromCart(item.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-error/30 hover:text-error hover:bg-error/10 transition-all">
-                      <span className="material-symbols-outlined text-xs">delete</span>
-                    </button>
+                  <div className="flex items-center bg-background rounded-lg border border-primary/5 p-0.5">
+                    <button onClick={() => updateQty(item.id, -1)} className="w-5 h-5 flex items-center justify-center text-primary/40"><span className="material-symbols-outlined text-xs">remove</span></button>
+                    <span className="w-6 text-center text-[10px] font-black">{item.qty}</span>
+                    <button onClick={() => updateQty(item.id, 1)} className="w-5 h-5 flex items-center justify-center text-primary/40"><span className="material-symbols-outlined text-xs">add</span></button>
                   </div>
+                  <button onClick={() => removeFromCart(item.id)} className="text-error/30"><span className="material-symbols-outlined text-xs">delete</span></button>
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -347,7 +369,7 @@ export default function PDVPage() {
               <span>Subtotal Itens</span>
               <span>R$ {formatUnitCost(subtotal)}</span>
             </div>
-            {deliveryFee > 0 && (
+            {isDelivery && deliveryFee > 0 && (
               <div className="flex justify-between text-primary/40 text-[9px] font-bold uppercase tracking-widest">
                 <span>Taxa de Entrega</span>
                 <span>+ R$ {formatUnitCost(deliveryFee)}</span>
@@ -362,13 +384,13 @@ export default function PDVPage() {
             <div className="h-px bg-primary/5 my-3" />
             <div className="flex justify-between items-end">
                <div>
-                  <p className="text-[9px] font-black text-primary/40 uppercase tracking-[0.2em] mb-1">Total Cliente</p>
-                  <p className="text-3xl font-black text-primary italic tracking-tighter leading-none">R$ {formatUnitCost(totalAmount)}</p>
+                  <p className="text-[9px] font-black text-primary/40 uppercase tracking-[0.2em] mb-1">Total</p>
+                  <p className="text-3xl font-black text-primary italic tracking-tighter">R$ {formatUnitCost(totalAmount)}</p>
                </div>
                {channel === "ifood" && (
                  <div className="text-right">
-                    <p className="text-[8px] font-black text-success uppercase tracking-widest mb-1">Liquido Atelier</p>
-                    <p className="text-lg font-black text-success tracking-tight leading-none">R$ {formatUnitCost(netAmount)}</p>
+                    <p className="text-[8px] font-black text-success uppercase tracking-widest mb-1">Líquido</p>
+                    <p className="text-lg font-black text-success tracking-tight">R$ {formatUnitCost(netAmount)}</p>
                  </div>
                )}
             </div>
@@ -382,14 +404,7 @@ export default function PDVPage() {
               cart.length === 0 ? "bg-primary/5 text-primary/20 cursor-not-allowed" : "bg-secondary text-primary hover:scale-[1.02] active:scale-95 shadow-secondary/20"
             )}
           >
-            {isSaving ? (
-              <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-            ) : (
-              <>
-                <span className="material-symbols-outlined text-base">check_circle</span>
-                Finalizar e Computar Venda
-              </>
-            )}
+            {isSaving ? <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /> : "Finalizar Venda"}
           </button>
         </div>
       </div>
