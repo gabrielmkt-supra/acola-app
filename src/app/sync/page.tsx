@@ -27,7 +27,13 @@ export default function SyncPage() {
         addLog("Sincronizando configurações globais...");
         const { error } = await supabase.from('app_configs').upsert({
           id: 'global',
-          ...localSettings,
+          business_name: localSettings.business_name,
+          business_slogan: localSettings.business_slogan,
+          whatsapp: localSettings.whatsapp,
+          markup_base: localSettings.markup,
+          taxa_indireta: localSettings.indirect_cost_pct,
+          taxa_cartao: localSettings.card_fee_pct,
+          categories: localSettings.categories,
           updated_at: new Date().toISOString()
         });
         if (error) addLog(`⚠️ Alerta nas configs: ${error.message}`);
@@ -44,12 +50,8 @@ export default function SyncPage() {
         
         const productsPayload = localProducts.map((p: any) => {
           const recipe = localRecipes[p.id] || Object.values(localRecipes).find((r: any) => r.productName === p.name);
-          
-          // Verifica se o ID é um UUID válido. Se não for (ex: PROD-123), deixa o Supabase gerar um novo.
-          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(p.id);
-          
           return {
-            id: isUUID ? p.id : undefined,
+            id: p.id, // Enviando o ID original (agora aceito como TEXT no banco)
             name: p.name,
             category: p.category,
             subtype: p.subtype,
@@ -63,22 +65,8 @@ export default function SyncPage() {
         });
 
         const { error } = await supabase.from('products').upsert(productsPayload);
-        
-        if (error) {
-          // Se a coluna 'recipe' não existir (erro 42703 ou mensagem específica)
-          if (error.code === '42703' || error.message?.includes('recipe')) {
-            addLog("⚠️ Coluna 'recipe' não encontrada no banco. Tentando salvar apenas dados básicos...");
-            const basicPayload = productsPayload.map(({ recipe, ...rest }: any) => rest);
-            const { error: retryError } = await supabase.from('products').upsert(basicPayload);
-            
-            if (retryError) throw new Error(`Erro crítico nos produtos: ${retryError.message}`);
-            addLog("✅ Produtos sincronizados (sem receitas - coluna ausente no banco).");
-          } else {
-            throw new Error(`Erro nos produtos/receitas: ${error.message}`);
-          }
-        } else {
-          addLog("✅ Produtos e Receitas sincronizados com sucesso.");
-        }
+        if (error) throw new Error(`Erro nos produtos/receitas: ${error.message}`);
+        addLog("✅ Produtos e Receitas sincronizados com sucesso.");
       }
 
       // 3. SINCRONIZAR INSUMOS (acola_insumos -> insumos)
@@ -90,14 +78,13 @@ export default function SyncPage() {
             nome: i.name,
             unidade: i.latestUnit || i.baseUnit || 'un',
             custo_unitario: Number(i.pricePerBaseUnit || 0),
-            // Colunas extras se existirem
             latest_price: Number(i.latestPrice || 0),
             latest_qty: Number(i.latestQty || 0),
             latest_unit: i.latestUnit,
             last_purchase_date: i.lastPurchaseDate
           }))
         );
-        if (error) addLog(`⚠️ Aviso nos insumos: ${error.message} (Pode ser falta de colunas extras)`);
+        if (error) addLog(`⚠️ Aviso nos insumos: ${error.message}`);
         else addLog("✅ Insumos sincronizados.");
       }
 

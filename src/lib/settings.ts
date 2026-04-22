@@ -32,13 +32,13 @@ export async function getSettings(): Promise<AppSettings> {
       .from('app_configs')
       .select('*')
       .eq('id', 'global')
-      .single();
+      .maybeSingle(); // Usar maybeSingle para evitar erro se não existir
 
     if (data) {
       return {
-        markup: data.markup ?? DEFAULT_SETTINGS.markup,
-        indirect_cost_pct: data.indirect_cost_pct ?? DEFAULT_SETTINGS.indirect_cost_pct,
-        card_fee_pct: data.card_fee_pct ?? DEFAULT_SETTINGS.card_fee_pct,
+        markup: Number(data.markup_base ?? DEFAULT_SETTINGS.markup),
+        indirect_cost_pct: Number(data.taxa_indireta ?? DEFAULT_SETTINGS.indirect_cost_pct),
+        card_fee_pct: Number(data.taxa_cartao ?? DEFAULT_SETTINGS.card_fee_pct),
         categories: data.categories ?? DEFAULT_SETTINGS.categories,
         base_unit: data.base_unit ?? DEFAULT_SETTINGS.base_unit,
         business_name: data.business_name ?? DEFAULT_SETTINGS.business_name,
@@ -47,7 +47,7 @@ export async function getSettings(): Promise<AppSettings> {
       };
     }
   } catch (e) {
-    console.warn("Erro ao buscar configurações no Supabase, tentando local...");
+    console.warn("Erro ao buscar configurações no Supabase, tentando local...", e);
   }
 
   // 2. Fallback LocalStorage
@@ -69,16 +69,27 @@ export async function getSettings(): Promise<AppSettings> {
  * Salva as configurações em ambos os destinos
  */
 export async function saveSettings(settings: AppSettings) {
+  // 1. Salva Local (Cache)
   if (typeof window !== "undefined") {
     localStorage.setItem("acola_settings", JSON.stringify(settings));
   }
 
+  // 2. Salva Nuvem (Supabase)
   try {
-    await supabase.from('app_configs').upsert({
+    const payload = {
       id: 'global',
-      ...settings,
+      business_name: settings.business_name,
+      business_slogan: settings.business_slogan,
+      whatsapp: settings.whatsapp,
+      markup_base: settings.markup,
+      taxa_indireta: settings.indirect_cost_pct,
+      taxa_cartao: settings.card_fee_pct,
+      categories: settings.categories,
       updated_at: new Date().toISOString()
-    });
+    };
+
+    const { error } = await supabase.from('app_configs').upsert(payload);
+    if (error) console.error("Erro ao salvar no Supabase:", error);
   } catch (e) {
     console.error("Erro ao salvar no Supabase:", e);
   }

@@ -44,10 +44,10 @@ export default function GestaoInsumos() {
         name: d.nome,
         pricePerBaseUnit: Number(d.custo_unitario),
         baseUnit: d.unidade,
-        latestPrice: Number(d.custo_unitario),
-        latestQty: 0,
-        latestUnit: d.unidade,
-        lastPurchaseDate: d.created_at,
+        latestPrice: Number(d.latest_price || d.custo_unitario),
+        latestQty: Number(d.latest_qty || 0),
+        latestUnit: d.latest_unit || d.unidade,
+        lastPurchaseDate: d.last_purchase_date || d.created_at,
         createdAt: d.created_at
       })));
     }
@@ -90,7 +90,11 @@ export default function GestaoInsumos() {
     const payload = {
       nome: name,
       unidade: (unit === "kg" || unit === "g") ? "g" : (unit === "L" || unit === "ml" ? "ml" : "un"),
-      custo_unitario: pricePerBaseUnit
+      custo_unitario: pricePerBaseUnit,
+      latest_price: initialPrice,
+      latest_qty: initialQty,
+      latest_unit: unit,
+      last_purchase_date: new Date().toLocaleDateString('pt-BR')
     };
 
     if (editingInsumo) {
@@ -102,13 +106,13 @@ export default function GestaoInsumos() {
     } else {
       const { error } = await supabase.from('insumos').insert([payload]);
       if (error) {
-        alert("Erro ao salvar insumo: " + error.message);
+        alert("Erro ao criar insumo: " + error.message);
         return;
       }
     }
 
-    fetchInsumos();
     setIsModalOpen(false);
+    fetchInsumos();
   };
 
   const handleDelete = async (nameToDelete: string) => {

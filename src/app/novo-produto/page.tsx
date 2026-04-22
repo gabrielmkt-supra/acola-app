@@ -425,36 +425,7 @@ function NovoProdutoContent() {
         error = insertError;
       }
 
-      if (error) {
-        // Tratar erro específico de coluna inexistente (recipe)
-        if (error.message?.includes('recipe') || error.code === '42703') {
-           console.warn("Coluna 'recipe' não encontrada no banco. Salvando receita no LocalStorage.");
-           // Fallback: Salvar receita localmente para não perder dados
-           const savedReceitas = localStorage.getItem("acola_receitas");
-           const all = savedReceitas ? JSON.parse(savedReceitas) : {};
-           
-           // Precisamos do ID se for novo produto (neste caso ainda não temos o ID gerado pelo banco se falhar aqui)
-           // Então o fallback só é ideal para Edição ou se ignorarmos o erro de salvamento de receita no banco.
-           
-           // Tentar salvar apenas os campos básicos primeiro para garantir persistência do produto
-           const { recipe, ...basicPayload } = productPayload;
-           const { data: retryData, error: retryError } = editId 
-            ? await supabase.from('products').update(basicPayload).eq('id', editId).select()
-            : await supabase.from('products').insert([basicPayload]).select();
-           
-           if (retryError) throw retryError;
-           
-           // Agora salvar ingredientes no LocalStorage (usando ID do produto gerado ou editId)
-           const actualId = editId || retryData?.[0]?.id;
-           if (actualId) {
-             // Salva com nome do produto também para facilitar fallback futuro
-             all[actualId] = { ...recipePayload, productName: nome };
-             localStorage.setItem("acola_receitas", JSON.stringify(all));
-           }
-        } else {
-           throw error;
-        }
-      }
+      if (error) throw error;
 
       addToast(editId ? "Produto atualizado com sucesso!" : "Produto cadastrado com sucesso!", "success");
 
