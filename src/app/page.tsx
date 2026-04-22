@@ -230,21 +230,38 @@ export default function Home() {
   };
 
   const handleDeleteProductById = async (id: string, name: string) => {
-    if (!confirm(`⚠️ ATENÇÃO: Deseja excluir permanentemente o produto "${name}"? Esta ação não pode ser desfeita.`)) return;
+    if (!confirm(`⚠️ ATENÇÃO CRÍTICA: Deseja excluir permanentemente o produto "${name}"? \n\nIsso removerá o item do estoque e do banco de dados. Se houver vendas vinculadas a este produto, a exclusão poderá ser bloqueada pelo sistema.`)) return;
 
-    const { error } = await supabase
-      .from('products')
-      .delete()
-      .eq('id', id);
+    try {
+      console.log(`Tentando excluir produto: ${id} (${name})`);
+      
+      const { error, status } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', id);
 
-    if (error) {
-      console.error("Erro ao excluir produto:", error);
-      alert("Erro ao excluir produto do banco.");
-      return;
+      if (error) {
+        console.error("Erro Supabase na exclusão:", error);
+        
+        // Erro 23503 é geralmente violação de chave estrangeira (foreign key violation)
+        if (error.code === '23503') {
+          alert(`❌ Não foi possível excluir "${name}" porque ele possui vendas ou registros vinculados. \n\nPara manter a integridade dos seus relatórios financeiros, o sistema não permite apagar produtos que já foram vendidos.`);
+        } else {
+          alert(`Erro ao excluir: ${error.message}`);
+        }
+        return;
+      }
+
+      console.log(`Produto excluído com sucesso. Status: ${status}`);
+
+      // Atualizar estado local usando função para garantir que pegamos a lista mais recente
+      setInventory(prev => prev.filter(item => item.id !== id));
+      
+      alert("Produto removido com sucesso!");
+    } catch (err: any) {
+      console.error("Erro inesperado na exclusão:", err);
+      alert("Ocorreu um erro inesperado ao tentar excluir o produto.");
     }
-
-    setInventory(inventory.filter(item => item.id !== id));
-    alert("Produto excluído com sucesso!");
   };
 
   const compressImage = (base64Str: string): Promise<string> => {
