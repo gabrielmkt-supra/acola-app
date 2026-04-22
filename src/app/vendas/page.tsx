@@ -73,8 +73,20 @@ export default function PDVPage() {
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
+        // Verifica se a nova quantidade ultrapassa o estoque
+        if (existing.qty + 1 > product.stock) {
+          alert(`⚠️ Limite atingido! Só existem ${product.stock} unidades deste produto no estoque.`);
+          return prev;
+        }
         return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item);
       }
+      
+      // Verifica estoque para o primeiro item
+      if (product.stock <= 0) {
+        alert("⚠️ Produto sem estoque disponível!");
+        return prev;
+      }
+      
       return [...prev, { id: product.id, name: product.name, price: product.price, qty: 1, category: product.category }];
     });
   };
@@ -84,9 +96,18 @@ export default function PDVPage() {
   };
 
   const updateQty = (id: string, delta: number) => {
+    const product = products.find(p => p.id === id);
+    if (!product) return;
+
     setCart(prev => prev.map(item => {
       if (item.id === id) {
         const newQty = Math.max(1, item.qty + delta);
+        
+        // Trava se tentar aumentar além do estoque
+        if (delta > 0 && newQty > product.stock) {
+          return item;
+        }
+        
         return { ...item, qty: newQty };
       }
       return item;
@@ -130,7 +151,6 @@ export default function PDVPage() {
     try {
       const timestamp = new Date().toISOString();
       
-      // Mapear itens para usar 'quantity' (padrão do sistema para estorno)
       const itemsForOrder = cart.map(item => ({
         id: item.id,
         name: item.name,
@@ -139,7 +159,6 @@ export default function PDVPage() {
         category: item.category
       }));
 
-      // 1. Criar o pedido
       const orderPayload = {
         client_name: clientName || (channel === "ifood" ? "Cliente iFood" : "Cliente Balcão"),
         client_phone: clientPhone,
@@ -162,22 +181,19 @@ export default function PDVPage() {
       const { data: newOrder, error: orderError } = await supabase.from('orders').insert([orderPayload]).select().single();
       if (orderError) throw orderError;
 
-      // 2. Abater estoque e Registrar Movimentação para cada item
       for (const item of cart) {
         const product = products.find(p => p.id === item.id);
         if (product) {
           const previousStock = Number(product.stock);
           const newStock = Math.max(0, previousStock - item.qty);
           
-          // Atualiza Produto
           await supabase.from('products').update({ stock: newStock }).eq('id', item.id);
 
-          // Registra na Central de Fluxo
           await supabase.from('inventory_movements').insert([{
             product_id: item.id,
             product_name: item.name,
             type: "Saída",
-            amount: -item.qty, // Negativo pois é saída
+            amount: -item.qty,
             previous_stock: previousStock,
             final_stock: newStock,
             note: `VENDA: ${orderPayload.client_name.toUpperCase()} - Pedido #${newOrder.id.split('-').pop()} (${channel.toUpperCase()})`
@@ -243,10 +259,13 @@ export default function PDVPage() {
               {filteredProducts.map((p) => (
                 <motion.div 
                   key={p.id}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => addToCart(p)}
-                  className="bg-surface p-4 rounded-[32px] border border-primary/5 shadow-sm cursor-pointer hover:shadow-xl hover:border-secondary/20 transition-all group flex flex-col h-full"
+                  whileHover={p.stock > 0 ? { scale: 1.02 } : {}}
+                  whileTap={p.stock > 0 ? { scale: 0.98 } : {}}
+                  onClick={() => p.stock > 0 && addToCart(p)}
+                  className={cn(
+                    "bg-surface p-4 rounded-[32px] border border-primary/5 shadow-sm transition-all group flex flex-col h-full",
+                    p.stock > 0 ? "cursor-pointer hover:shadow-xl hover:border-secondary/20" : "opacity-50 grayscale cursor-not-allowed"
+                  )}
                 >
                   <div className="w-full aspect-square rounded-[24px] overflow-hidden mb-4 bg-background relative">
                     <img 
@@ -413,28 +432,39 @@ export default function PDVPage() {
             </div>
           ) : (
             <AnimatePresence>
-              {cart.map((item) => (
-                <motion.div 
-                  key={item.id}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  className="flex items-center gap-3 bg-background/50 p-3 rounded-2xl border border-primary/5"
-                >
-                  <div className="flex-1">
-                    <h4 className="text-[10px] font-black text-primary uppercase tracking-tight mb-0.5">{item.name}</h4>
-                    <p className="text-[9px] font-bold text-secondary">R$ {formatUnitCost(item.price)}</p>
-                  </div>
-                  <div className="flex items-center bg-background rounded-lg border border-primary/5 p-0.5">
-                    <button onClick={() => updateQty(item.id, -1)} className="w-5 h-5 flex items-center justify-center text-primary/40"><span className="material-symbols-outlined text-xs">remove</span></button>
-                    <span className="w-6 text-center text-[10px] font-black">{item.qty}</span>
-                    <button onClick={() => updateQty(item.id, 1)} className="w-5 h-5 flex items-center justify-center text-primary/40"><span className="material-symbols-outlined text-xs">add</span></button>
-                  </div>
-                  <button onClick={() => removeFromCart(item.id)} className="text-error/30 hover:text-error transition-all cursor-pointer">
-                    <span className="material-symbols-outlined text-xs">delete</span>
-                  </button>
-                </motion.div>
-              ))}
+              {cart.map((item) => {
+                const p = products.find(prod => prod.id === item.id);
+                const isAtLimit = p && item.qty >= p.stock;
+
+                return (
+                  <motion.div 
+                    key={item.id}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="flex items-center gap-3 bg-background/50 p-3 rounded-2xl border border-primary/5"
+                  >
+                    <div className="flex-1">
+                      <h4 className="text-[10px] font-black text-primary uppercase tracking-tight mb-0.5">{item.name}</h4>
+                      <p className="text-[9px] font-bold text-secondary">R$ {formatUnitCost(item.price)}</p>
+                    </div>
+                    <div className="flex items-center bg-background rounded-lg border border-primary/5 p-0.5">
+                      <button onClick={() => updateQty(item.id, -1)} className="w-5 h-5 flex items-center justify-center text-primary/40"><span className="material-symbols-outlined text-xs">remove</span></button>
+                      <span className="w-6 text-center text-[10px] font-black">{item.qty}</span>
+                      <button 
+                        onClick={() => updateQty(item.id, 1)} 
+                        disabled={isAtLimit}
+                        className={cn("w-5 h-5 flex items-center justify-center transition-colors", isAtLimit ? "text-primary/10 cursor-not-allowed" : "text-primary/40")}
+                      >
+                        <span className="material-symbols-outlined text-xs">add</span>
+                      </button>
+                    </div>
+                    <button onClick={() => removeFromCart(item.id)} className="text-error/30 hover:text-error transition-all cursor-pointer">
+                      <span className="material-symbols-outlined text-xs">delete</span>
+                    </button>
+                  </motion.div>
+                );
+              })}
             </AnimatePresence>
           )}
         </div>
