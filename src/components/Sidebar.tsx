@@ -21,6 +21,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { name: "ESTOQUE", href: "/", icon: "inventory_2", fill: true },
+  { name: "REPOR ESTOQUE", href: "/repor-estoque", icon: "add_home_work" },
   { name: "MOVIMENTAÇÕES", href: "/movimentacoes", icon: "swap_horiz" },
   { 
     name: "FINANCEIRO", 
