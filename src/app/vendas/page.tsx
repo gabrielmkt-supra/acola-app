@@ -228,11 +228,11 @@ export default function PDVPage() {
                <button 
                  onClick={() => setIsDelivery(false)}
                  disabled={channel === "ifood"}
-                 className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all", !isDelivery ? "bg-primary text-secondary" : "text-primary/30")}
+                 className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all", !isDelivery ? "bg-secondary text-primary-foreground shadow-lg" : "text-primary/30 hover:bg-primary/5")}
                >Balcão</button>
                <button 
                  onClick={() => setIsDelivery(true)}
-                 className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all", isDelivery ? "bg-secondary text-primary" : "text-primary/30")}
+                 className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all", isDelivery ? "bg-secondary text-primary-foreground shadow-lg" : "text-primary/30 hover:bg-primary/5")}
                >Entrega</button>
             </div>
           </div>
