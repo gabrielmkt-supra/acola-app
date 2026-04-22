@@ -270,8 +270,8 @@ function NovoProdutoContent() {
   });
 
   const subtotalReceita = custosIngredientes.reduce((acc, curr) => acc + curr, 0);
-  const taxaIndireta = subtotalReceita * (appConfigs.indirect_cost_pct / 100);
-  const custoTotal = subtotalReceita + taxaIndireta;
+  const margemSeguranca = subtotalReceita * 0.05; // Margem original de 5%
+  const custoTotal = subtotalReceita + margemSeguranca;
   const lucroBruto = precoVenda - custoTotal;
   const margemLucro = precoVenda > 0 ? (lucroBruto / precoVenda) * 100 : 0;
 
