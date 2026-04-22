@@ -425,7 +425,10 @@ function NovoProdutoContent() {
                 <div className="bg-surface-variant/10 p-6 m-6 rounded-[32px] border border-primary/5 flex flex-col md:flex-row gap-6 items-center">
                   <div className="flex-1 grid grid-cols-2 md:grid-cols-5 gap-4 w-full">
                     <div className="bg-background/40 p-4 rounded-2xl border border-primary/5">
-                      <p className="text-[8px] font-black text-primary/30 uppercase tracking-widest mb-1">Custo Total</p>
+                      <div className="flex justify-between items-start mb-1">
+                        <p className="text-[8px] font-black text-primary/30 uppercase tracking-widest">Custo Total</p>
+                        <span className="text-[7px] font-black text-secondary bg-secondary/10 px-1.5 py-0.5 rounded-md uppercase tracking-tight">+5% Margem</span>
+                      </div>
                       <p className="text-xl font-black text-primary italic">R$ {formatUnitCost(custoTotal)}</p>
                     </div>
                     <div className="bg-background/40 p-4 rounded-2xl border border-primary/5">
