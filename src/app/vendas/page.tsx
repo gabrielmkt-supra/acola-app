@@ -279,7 +279,7 @@ export default function PDVPage() {
               <label className="text-[8px] font-black uppercase text-primary/40 ml-1">Forma de Pagamento</label>
               <div className="grid grid-cols-2 gap-2">
                 {channel === "ifood" ? (
-                  <div className="col-span-2 py-2.5 bg-red-600/10 border border-red-600/20 rounded-xl text-center text-[10px] font-black text-red-600 uppercase">Pagamento via iFood App</div>
+                  <div className="col-span-2 py-2.5 bg-secondary border border-secondary/20 rounded-xl text-center text-[10px] font-black text-white uppercase shadow-lg shadow-secondary/10">Pagamento via iFood App</div>
                 ) : (
                   <select value={paymentMethod} onChange={(e) => { setPaymentMethod(e.target.value); setIsFiado(e.target.value === "Fiado"); }} className="col-span-2 py-2.5 px-4 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30">
                     <option value="Cartão">Cartão</option>
