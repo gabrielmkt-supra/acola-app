@@ -116,20 +116,8 @@ export default function ConfigPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background p-6 md:p-10 max-w-6xl mx-auto space-y-10 pb-32">
-      
-      {/* Header */}
-      <header className="flex justify-between items-end">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <Link href="/" className="flex items-center justify-center w-10 h-10 rounded-2xl bg-surface border border-primary/5 text-primary hover:scale-105 transition-all shadow-sm">
-              <span className="material-symbols-outlined text-xl">arrow_back</span>
-            </Link>
-            <h1 className="text-4xl font-black text-primary italic uppercase tracking-tighter">Configurações</h1>
-          </div>
-          <p className="text-[10px] font-black text-primary/40 uppercase tracking-[0.4em] ml-14">Personalize a inteligência do seu Atelier</p>
-        </div>
-      </header>
+    <div className="flex flex-col h-full p-6 md:p-10 max-w-6xl mx-auto space-y-10 pb-32">
+
 
       {/* Tabs - Reformulated for better visibility */}
       <div className="flex flex-wrap gap-3 p-2 bg-surface/50 border border-primary/10 rounded-[32px] w-full md:w-fit shadow-inner overflow-x-auto no-scrollbar">

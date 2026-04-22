@@ -54,7 +54,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex bg-background text-primary font-sans overflow-hidden transition-colors duration-300">
         <Sidebar />
-        <div className="flex-1 flex flex-col h-screen transition-all duration-300 bg-surface rounded-tl-[40px] shadow-2xl my-2 mr-2 overflow-hidden border-l border-t border-primary/5">
+        <div className="flex-1 flex flex-col h-screen transition-all duration-300 bg-background overflow-hidden border-l border-primary/5">
           <TopBar />
           <main className="flex-1 overflow-y-auto">
             {children}

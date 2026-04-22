@@ -637,34 +637,7 @@ function NovoProdutoContent() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      {/* Header Fluido (Sobe com o scroll) */}
-      <header className="h-20 shrink-0 flex items-center justify-between px-8 bg-background border-b border-primary/5 z-10">
-        <div className="flex items-center gap-4">
-          <Link href="/" className="w-10 h-10 flex items-center justify-center rounded-xl bg-primary/5 text-primary hover:bg-primary/10 transition-all">
-            <span className="material-symbols-outlined">arrow_back</span>
-          </Link>
-          <div>
-            <h1 className="text-xl font-black text-primary tracking-tight uppercase">
-              {editId ? "Edição de Produto" : "Produto / Estoque"}
-            </h1>
-            <p className="text-[10px] font-bold text-primary/40 uppercase tracking-widest leading-none mt-1">
-              {editId ? `Alterando: ${nome || "Carregando..."}` : "Gestão de Inventário"}
-            </p>
-          </div>
-        </div>
-
-        {viewMode !== "selection" && (
-           <button 
-             onClick={() => setViewMode("selection")}
-             className="px-4 py-2 text-[10px] font-black text-primary/40 hover:text-primary uppercase tracking-widest flex items-center gap-2 transition-all cursor-pointer"
-           >
-             <span className="material-symbols-outlined text-lg">grid_view</span>
-             Mudar Modo
-           </button>
-        )}
-      </header>
-
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto p-4 md:p-8">
         <div className="max-w-6xl mx-auto">
           {/* MODO LOADING */}
