@@ -61,13 +61,14 @@ export function Sidebar() {
 
   return (
     <aside className="h-screen bg-background z-[100] flex flex-col items-center py-6 hidden md:flex transition-all duration-300 shrink-0 w-24">
-      {/* Logo Area */}
-      <motion.div 
-        whileHover={{ scale: 1.05 }}
-        className="w-12 h-12 rounded-2xl shadow-sm flex items-center justify-center mb-8 shrink-0 cursor-pointer overflow-hidden dark:border-2 dark:border-secondary/30 border-transparent"
-      >
-        <img src="/logo.png" alt="Acolá Logo" className="w-full h-full object-cover" />
-      </motion.div>
+      <Link href="/">
+        <motion.div 
+          whileHover={{ scale: 1.05 }}
+          className="w-12 h-12 rounded-2xl shadow-sm flex items-center justify-center mb-8 shrink-0 cursor-pointer overflow-hidden dark:border-2 dark:border-secondary/30 border-transparent"
+        >
+          <img src="/logo.png" alt="Acolá Logo" className="w-full h-full object-cover" />
+        </motion.div>
+      </Link>
 
       {/* Floating Dock Container */}
       <div className="bg-surface rounded-[40px] shadow-sm border border-primary/5 p-2 flex flex-col gap-3 w-14">
