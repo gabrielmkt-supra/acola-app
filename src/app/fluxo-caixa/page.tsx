@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 
 // Utility for conditional classes
 function cn(...inputs: any[]) {
@@ -38,13 +39,29 @@ export default function FluxoCaixa() {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
 
   useEffect(() => {
-    const savedVendas = localStorage.getItem("acola_vendas");
-    const savedCompras = localStorage.getItem("acola_compras");
-    const savedInventory = localStorage.getItem("acola_estoque");
+    const fetchData = async () => {
+      const { data: sales } = await supabase.from('orders').select('*');
+      const { data: purchases } = await supabase.from('purchases').select('*');
+      const { data: products } = await supabase.from('products').select('*');
 
-    if (savedVendas) setVendas(JSON.parse(savedVendas));
-    if (savedCompras) setCompras(JSON.parse(savedCompras));
-    if (savedInventory) setInventory(JSON.parse(savedInventory));
+      if (sales) setVendas(sales.map(s => ({
+        timestamp: s.timestamp,
+        total: Number(s.total || 0),
+        paymentStatus: s.payment_status || 'pago'
+      })));
+      
+      if (purchases) setCompras(purchases.map(p => ({
+        timestamp: p.date || p.timestamp,
+        total: Number(p.total_price || p.total || 0)
+      })));
+
+      if (products) setInventory(products.map(p => ({
+        stock: Number(p.stock || 0),
+        price: String(p.price || "0")
+      })));
+    };
+    
+    fetchData();
   }, []);
 
   // Cálculos Dinâmicos

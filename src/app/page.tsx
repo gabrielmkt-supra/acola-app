@@ -38,7 +38,12 @@ export default function Home() {
 
       // 2. Vendas (Orders)
       const { data: sales } = await supabase.from('orders').select('*').order('timestamp', { ascending: false });
-      if (sales) setVendas(sales);
+      if (sales) setVendas(sales.map(s => ({
+        ...s,
+        paymentStatus: s.payment_status || 'pago',
+        clientName: s.client_name || 'Cliente Balcão',
+        clientPhone: s.client_phone || ''
+      })));
 
       // 3. Compras (Purchases)
       const { data: purchases } = await supabase.from('purchases').select('*').order('date', { ascending: false });

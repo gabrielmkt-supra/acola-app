@@ -445,52 +445,62 @@ export default function ConfigPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <button 
-                        onClick={() => {
-                          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(settings, null, 2));
-                          const downloadAnchorNode = document.createElement('a');
-                          downloadAnchorNode.setAttribute("href",     dataStr);
-                          downloadAnchorNode.setAttribute("download", "acola_settings.json");
-                          document.body.appendChild(downloadAnchorNode);
-                          downloadAnchorNode.click();
-                          downloadAnchorNode.remove();
-                          addToast("Configurações exportadas!");
-                        }}
-                        className="flex items-center justify-center gap-3 py-4 bg-primary/5 text-primary rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/10 transition-all border border-primary/5"
+                    <div className="flex flex-col gap-4">
+                      <Link 
+                        href="/sync"
+                        className="flex items-center justify-center gap-4 py-6 bg-gradient-to-r from-secondary/20 to-secondary/5 text-primary rounded-3xl text-xs font-black uppercase tracking-[0.2em] hover:from-secondary/30 hover:to-secondary/10 transition-all border border-secondary/20 shadow-xl shadow-secondary/5 group"
                       >
-                        <span className="material-symbols-outlined text-lg">download</span>
-                        Exportar JSON
-                      </button>
+                        <span className="material-symbols-outlined text-secondary group-hover:rotate-180 transition-transform duration-700">cloud_sync</span>
+                        Migrar Tudo para Nuvem
+                      </Link>
 
-                      <button 
-                        onClick={() => {
-                          const input = document.createElement('input');
-                          input.type = 'file';
-                          input.accept = '.json';
-                          input.onchange = (e: any) => {
-                            const file = e.target.files[0];
-                            const reader = new FileReader();
-                            reader.readAsText(file, 'UTF-8');
-                            reader.onload = (readerEvent) => {
-                              try {
-                                const content = readerEvent.target?.result as string;
-                                const parsed = JSON.parse(content);
-                                handleSave(parsed);
-                                addToast("Configurações importadas!");
-                                setTimeout(() => window.location.reload(), 1000);
-                              } catch (err) {
-                                addToast("Erro ao importar JSON", "alert");
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <button 
+                          onClick={() => {
+                            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(settings, null, 2));
+                            const downloadAnchorNode = document.createElement('a');
+                            downloadAnchorNode.setAttribute("href",     dataStr);
+                            downloadAnchorNode.setAttribute("download", "acola_settings.json");
+                            document.body.appendChild(downloadAnchorNode);
+                            downloadAnchorNode.click();
+                            downloadAnchorNode.remove();
+                            addToast("Configurações exportadas!");
+                          }}
+                          className="flex items-center justify-center gap-3 py-4 bg-primary/5 text-primary rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/10 transition-all border border-primary/5"
+                        >
+                          <span className="material-symbols-outlined text-lg">download</span>
+                          Exportar JSON
+                        </button>
+
+                        <button 
+                          onClick={() => {
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = '.json';
+                            input.onchange = (e: any) => {
+                              const file = e.target.files[0];
+                              const reader = new FileReader();
+                              reader.readAsText(file, 'UTF-8');
+                              reader.onload = (readerEvent) => {
+                                try {
+                                  const content = readerEvent.target?.result as string;
+                                  const parsed = JSON.parse(content);
+                                  handleSave(parsed);
+                                  addToast("Configurações importadas!");
+                                  setTimeout(() => window.location.reload(), 1000);
+                                } catch (err) {
+                                  addToast("Erro ao importar JSON", "alert");
+                                }
                               }
                             }
-                          }
-                          input.click();
-                        }}
-                        className="flex items-center justify-center gap-3 py-4 bg-primary/5 text-primary rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/10 transition-all border border-primary/5"
-                      >
-                        <span className="material-symbols-outlined text-lg">upload</span>
-                        Importar JSON
-                      </button>
+                            input.click();
+                          }}
+                          className="flex items-center justify-center gap-3 py-4 bg-primary/5 text-primary rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/10 transition-all border border-primary/5"
+                        >
+                          <span className="material-symbols-outlined text-lg">upload</span>
+                          Importar JSON
+                        </button>
+                      </div>
                     </div>
                     
                     <button 

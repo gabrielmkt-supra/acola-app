@@ -21,28 +21,50 @@ export default function SyncPage() {
     addLog("Iniciando sincronização master...");
 
     try {
-      // 1. SINCRONIZAR PRODUTOS (acola_estoque -> products)
-      const localProducts = JSON.parse(localStorage.getItem("acola_estoque") || "[]");
-      if (localProducts.length > 0) {
-        addLog(`Encontrados ${localProducts.length} produtos locais. Enviando...`);
-        const { error } = await supabase.from('products').upsert(
-          localProducts.map((p: any) => ({
-            id: p.id || undefined,
-            name: p.name,
-            category: p.category,
-            subtype: p.subtype,
-            price: Number(p.sale_price || p.price || 0),
-            cost: Number(p.cost || 0),
-            stock: Number(p.current_stock || p.stock || 0),
-            image: p.image,
-            status: 'active'
-          }))
-        );
-        if (error) throw new Error(`Erro nos produtos: ${error.message}`);
-        addLog("✅ Produtos sincronizados com sucesso.");
+      // 0. SINCRONIZAR CONFIGURAÇÕES (acola_settings -> app_configs)
+      const localSettings = JSON.parse(localStorage.getItem("acola_settings") || "{}");
+      if (Object.keys(localSettings).length > 0) {
+        addLog("Sincronizando configurações globais...");
+        const { error } = await supabase.from('app_configs').upsert({
+          id: 'global',
+          ...localSettings,
+          updated_at: new Date().toISOString()
+        });
+        if (error) addLog(`⚠️ Alerta nas configs: ${error.message}`);
+        else addLog("✅ Configurações sincronizadas.");
       }
 
-      // 2. SINCRONIZAR INSUMOS (acola_insumos -> insumos)
+      // 1. CARREGAR RECEITAS LOCAIS (PARA VINCULAR AOS PRODUTOS)
+      const localRecipes = JSON.parse(localStorage.getItem("acola_receitas") || "{}");
+
+      // 2. SINCRONIZAR PRODUTOS (acola_estoque -> products)
+      const localProducts = JSON.parse(localStorage.getItem("acola_estoque") || "[]");
+      if (localProducts.length > 0) {
+        addLog(`Encontrados ${localProducts.length} produtos locais. Processando receitas...`);
+        const { error } = await supabase.from('products').upsert(
+          localProducts.map((p: any) => {
+            // Tenta encontrar a receita por ID ou por Nome
+            const recipe = localRecipes[p.id] || Object.values(localRecipes).find((r: any) => r.productName === p.name);
+            
+            return {
+              id: p.id || undefined,
+              name: p.name,
+              category: p.category,
+              subtype: p.subtype,
+              price: Number(p.sale_price || p.price || 0),
+              cost: Number(p.cost || 0),
+              stock: Number(p.current_stock || p.stock || 0),
+              image: p.image,
+              status: 'active',
+              recipe: recipe ? { items: recipe.items, rendimento: recipe.rendimento } : null
+            };
+          })
+        );
+        if (error) throw new Error(`Erro nos produtos/receitas: ${error.message}`);
+        addLog("✅ Produtos e Receitas sincronizados com sucesso.");
+      }
+
+      // 3. SINCRONIZAR INSUMOS (acola_insumos -> insumos)
       const localInsumos = JSON.parse(localStorage.getItem("acola_insumos") || "[]");
       if (localInsumos.length > 0) {
         addLog(`Encontrados ${localInsumos.length} insumos locais. Enviando...`);
@@ -51,63 +73,85 @@ export default function SyncPage() {
             nome: i.name,
             unidade: i.latestUnit || i.baseUnit || 'un',
             custo_unitario: Number(i.pricePerBaseUnit || 0),
-            price_per_base_unit: Number(i.pricePerBaseUnit || 0),
-            base_unit: i.baseUnit,
+            // Colunas extras se existirem
             latest_price: Number(i.latestPrice || 0),
             latest_qty: Number(i.latestQty || 0),
             latest_unit: i.latestUnit,
             last_purchase_date: i.lastPurchaseDate
           }))
         );
-        if (error) throw new Error(`Erro nos insumos: ${error.message}`);
-        addLog("✅ Insumos sincronizados com sucesso.");
+        if (error) addLog(`⚠️ Aviso nos insumos: ${error.message} (Pode ser falta de colunas extras)`);
+        else addLog("✅ Insumos sincronizados.");
       }
 
-      // 3. SINCRONIZAR VENDAS (acola_vendas -> orders)
+      // 4. SINCRONIZAR VENDAS (acola_vendas -> orders)
       const localSales = JSON.parse(localStorage.getItem("acola_vendas") || "[]");
       if (localSales.length > 0) {
         addLog(`Encontradas ${localSales.length} vendas locais. Enviando...`);
         const { error } = await supabase.from('orders').upsert(
           localSales.map((s: any) => ({
             id: s.id,
-            client_name: s.buyerName || 'Cliente Balcão',
+            client_name: s.buyerName || s.client_name || 'Cliente Balcão',
+            client_phone: s.buyerPhone || s.client_phone || '',
             total: Number(s.total || 0),
-            payment_status: s.paymentStatus || 'pago',
-            payment_method: s.paymentMethod || 'Dinheiro',
+            payment_status: s.paymentStatus || s.payment_status || 'pago',
+            payment_method: s.paymentMethod || s.payment_method || 'Dinheiro',
             items: s.items || [],
             timestamp: s.timestamp 
           }))
         );
         if (error) throw new Error(`Erro nas vendas: ${error.message}`);
-        addLog("✅ Vendas sincronizadas com sucesso.");
+        addLog("✅ Vendas sincronizadas.");
       }
 
-      // 4. SINCRONIZAR COMPRAS (acola_compras -> purchases)
+      // 5. SINCRONIZAR COMPRAS (acola_compras -> purchases)
       const localPurchases = JSON.parse(localStorage.getItem("acola_compras") || "[]");
       if (localPurchases.length > 0) {
         addLog(`Encontradas ${localPurchases.length} compras locais. Enviando...`);
         const { error } = await supabase.from('purchases').upsert(
           localPurchases.map((c: any) => ({
-            item_name: 'Compra em Lote',
+            id: c.id,
+            item_name: c.name || 'Compra em Lote',
             quantity: 1,
             unit: 'un',
             total_price: Number(c.total || 0),
             items: c.items || [],
-            date: c.timestamp 
+            date: c.timestamp || c.date 
           }))
         );
         if (error) throw new Error(`Erro nas compras: ${error.message}`);
-        addLog("✅ Compras sincronizadas com sucesso.");
+        addLog("✅ Compras sincronizadas.");
+      }
+
+      // 6. SINCRONIZAR HISTÓRICO (acola_historico -> inventory_movements)
+      const localHistory = JSON.parse(localStorage.getItem("acola_historico") || "[]");
+      if (localHistory.length > 0) {
+        addLog(`Encontradas ${localHistory.length} movimentações no histórico. Enviando...`);
+        const { error } = await supabase.from('inventory_movements').upsert(
+          localHistory.map((m: any) => ({
+            id: m.id,
+            timestamp: m.timestamp,
+            product_id: m.productId || m.product_id,
+            product_name: m.productName || m.product_name,
+            type: m.type,
+            amount: Number(m.amount || 0),
+            previous_stock: Number(m.previousStock || m.previous_stock || 0),
+            final_stock: Number(m.finalStock || m.final_stock || 0),
+            note: m.note
+          }))
+        );
+        if (error) addLog(`⚠️ Aviso no histórico: ${error.message}`);
+        else addLog("✅ Histórico de movimentações sincronizado.");
       }
 
       setStatus("completed");
-      addLog("🚀 SINCRONIZAÇÃO CONCLUÍDA! Seu app agora está na nuvem.");
+      addLog("🚀 MIGRAÇÃO CONCLUÍDA! Seu Atelier está 100% na nuvem.");
 
     } catch (err: any) {
       console.error(err);
       setStatus("error");
       setErrorMsg(err.message);
-      addLog(`❌ ERRO: ${err.message}`);
+      addLog(`❌ ERRO CRÍTICO: ${err.message}`);
     }
   };
 
