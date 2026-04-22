@@ -27,6 +27,7 @@ export default function PDVPage() {
   const [channel, setChannel] = useState<"balcao" | "ifood">("balcao");
   const [isDelivery, setIsDelivery] = useState(false);
   const [ifoodFeePct, setIfoodFeePct] = useState(23); 
+  const [platformIncentives, setPlatformIncentives] = useState(0); // Novo: Incentivos iFood
   const [deliveryFee, setDeliveryFee] = useState(0);
   const [deliveryDate, setDeliveryDate] = useState("");
   
@@ -41,9 +42,12 @@ export default function PDVPage() {
     fetchProducts();
   }, []);
 
-  // Ao mudar para iFood, entrega é automática
   useEffect(() => {
     if (channel === "ifood") setIsDelivery(true);
+    else {
+      setPlatformIncentives(0);
+      setIfoodFeePct(0);
+    }
   }, [channel]);
 
   const fetchProducts = async () => {
@@ -93,7 +97,7 @@ export default function PDVPage() {
   
   const platformFeesAmount = channel === "ifood" ? (subtotal * (ifoodFeePct / 100)) : 0;
   const totalAmount = subtotal + (isDelivery ? deliveryFee : 0);
-  const netAmount = totalAmount - platformFeesAmount;
+  const netAmount = totalAmount - platformFeesAmount - platformIncentives;
 
   const handleFinalize = async () => {
     if (cart.length === 0) return;
@@ -111,6 +115,7 @@ export default function PDVPage() {
         items: cart,
         channel: channel,
         platform_fees: platformFeesAmount,
+        platform_incentives: platformIncentives,
         delivery_fee: isDelivery ? deliveryFee : 0,
         net_amount: netAmount,
         is_delivery: isDelivery,
@@ -161,7 +166,7 @@ export default function PDVPage() {
                onClick={() => { setChannel("balcao"); setIfoodFeePct(0); }}
                className={cn(
                  "px-6 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-widest transition-all",
-                 channel === "balcao" ? "bg-secondary text-primary shadow-lg" : "text-primary/30 hover:bg-primary/5"
+                 channel === "balcao" ? "bg-secondary text-primary-foreground shadow-lg" : "text-primary/30 hover:bg-primary/5"
                )}
              >
                Venda Direta
@@ -315,18 +320,36 @@ export default function PDVPage() {
             </AnimatePresence>
 
             {channel === "ifood" && (
-              <div className="space-y-1 col-span-2">
-                <label className="text-[8px] font-black uppercase text-primary/40 ml-1">Taxa iFood (%)</label>
-                <div className="relative">
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-red-500/40">%</span>
-                  <input 
-                    type="number"
-                    value={ifoodFeePct}
-                    onChange={(e) => setIfoodFeePct(Number(e.target.value))}
-                    className="w-full px-4 py-2.5 bg-red-500/5 border border-red-500/10 rounded-xl text-[11px] font-black text-red-500 outline-none"
-                  />
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="col-span-2 grid grid-cols-2 gap-3"
+              >
+                <div className="space-y-1">
+                  <label className="text-[8px] font-black uppercase text-primary/40 ml-1">Taxa iFood (%)</label>
+                  <div className="relative">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-red-500/40">%</span>
+                    <input 
+                      type="number"
+                      value={ifoodFeePct}
+                      onChange={(e) => setIfoodFeePct(Number(e.target.value))}
+                      className="w-full px-4 py-2.5 bg-red-500/5 border border-red-500/10 rounded-xl text-[11px] font-black text-red-500 outline-none"
+                    />
+                  </div>
                 </div>
-              </div>
+                <div className="space-y-1">
+                  <label className="text-[8px] font-black uppercase text-primary/40 ml-1">Incentivos iFood (R$)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-red-500/40">R$</span>
+                    <input 
+                      type="number"
+                      value={platformIncentives}
+                      onChange={(e) => setPlatformIncentives(Number(e.target.value))}
+                      className="w-full pl-9 pr-4 py-2.5 bg-red-500/5 border border-red-500/10 rounded-xl text-[11px] font-black text-red-500 outline-none"
+                    />
+                  </div>
+                </div>
+              </motion.div>
             )}
           </div>
         </div>
@@ -376,20 +399,28 @@ export default function PDVPage() {
               </div>
             )}
             {channel === "ifood" && (
-              <div className="flex justify-between text-red-500/60 text-[9px] font-bold uppercase tracking-widest">
-                <span>Comissão iFood ({ifoodFeePct}%)</span>
-                <span>- R$ {formatUnitCost(platformFeesAmount)}</span>
-              </div>
+              <>
+                <div className="flex justify-between text-red-500/60 text-[9px] font-bold uppercase tracking-widest">
+                  <span>Comissão iFood ({ifoodFeePct}%)</span>
+                  <span>- R$ {formatUnitCost(platformFeesAmount)}</span>
+                </div>
+                {platformIncentives > 0 && (
+                  <div className="flex justify-between text-red-500/60 text-[9px] font-bold uppercase tracking-widest">
+                    <span>Incentivos iFood</span>
+                    <span>- R$ {formatUnitCost(platformIncentives)}</span>
+                  </div>
+                )}
+              </>
             )}
             <div className="h-px bg-primary/5 my-3" />
             <div className="flex justify-between items-end">
                <div>
-                  <p className="text-[9px] font-black text-primary/40 uppercase tracking-[0.2em] mb-1">Total</p>
+                  <p className="text-[9px] font-black text-primary/40 uppercase tracking-[0.2em] mb-1">Total Cliente</p>
                   <p className="text-3xl font-black text-primary italic tracking-tighter">R$ {formatUnitCost(totalAmount)}</p>
                </div>
                {channel === "ifood" && (
                  <div className="text-right">
-                    <p className="text-[8px] font-black text-success uppercase tracking-widest mb-1">Líquido</p>
+                    <p className="text-[8px] font-black text-success uppercase tracking-widest mb-1">Líquido Atelier</p>
                     <p className="text-lg font-black text-success tracking-tight">R$ {formatUnitCost(netAmount)}</p>
                  </div>
                )}
@@ -401,7 +432,7 @@ export default function PDVPage() {
             onClick={handleFinalize}
             className={cn(
               "w-full py-5 rounded-[20px] text-[10px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-3 shadow-xl",
-              cart.length === 0 ? "bg-primary/5 text-primary/20 cursor-not-allowed" : "bg-secondary text-primary hover:scale-[1.02] active:scale-95 shadow-secondary/20"
+              cart.length === 0 ? "bg-primary/5 text-primary/20 cursor-not-allowed" : "bg-secondary text-primary-foreground hover:scale-[1.02] active:scale-95 shadow-secondary/20"
             )}
           >
             {isSaving ? <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /> : "Finalizar Venda"}
