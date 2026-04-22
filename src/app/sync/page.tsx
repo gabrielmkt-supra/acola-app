@@ -41,27 +41,40 @@ export default function SyncPage() {
       const localProducts = JSON.parse(localStorage.getItem("acola_estoque") || "[]");
       if (localProducts.length > 0) {
         addLog(`Encontrados ${localProducts.length} produtos locais. Processando receitas...`);
-        const { error } = await supabase.from('products').upsert(
-          localProducts.map((p: any) => {
-            // Tenta encontrar a receita por ID ou por Nome
-            const recipe = localRecipes[p.id] || Object.values(localRecipes).find((r: any) => r.productName === p.name);
+        
+        const productsPayload = localProducts.map((p: any) => {
+          const recipe = localRecipes[p.id] || Object.values(localRecipes).find((r: any) => r.productName === p.name);
+          return {
+            id: p.id || undefined,
+            name: p.name,
+            category: p.category,
+            subtype: p.subtype,
+            price: Number(p.sale_price || p.price || 0),
+            cost: Number(p.cost || 0),
+            stock: Number(p.current_stock || p.stock || 0),
+            image: p.image,
+            status: 'active',
+            recipe: recipe ? { items: recipe.items, rendimento: recipe.rendimento } : null
+          };
+        });
+
+        const { error } = await supabase.from('products').upsert(productsPayload);
+        
+        if (error) {
+          // Se a coluna 'recipe' não existir (erro 42703 ou mensagem específica)
+          if (error.code === '42703' || error.message?.includes('recipe')) {
+            addLog("⚠️ Coluna 'recipe' não encontrada no banco. Tentando salvar apenas dados básicos...");
+            const basicPayload = productsPayload.map(({ recipe, ...rest }: any) => rest);
+            const { error: retryError } = await supabase.from('products').upsert(basicPayload);
             
-            return {
-              id: p.id || undefined,
-              name: p.name,
-              category: p.category,
-              subtype: p.subtype,
-              price: Number(p.sale_price || p.price || 0),
-              cost: Number(p.cost || 0),
-              stock: Number(p.current_stock || p.stock || 0),
-              image: p.image,
-              status: 'active',
-              recipe: recipe ? { items: recipe.items, rendimento: recipe.rendimento } : null
-            };
-          })
-        );
-        if (error) throw new Error(`Erro nos produtos/receitas: ${error.message}`);
-        addLog("✅ Produtos e Receitas sincronizados com sucesso.");
+            if (retryError) throw new Error(`Erro crítico nos produtos: ${retryError.message}`);
+            addLog("✅ Produtos sincronizados (sem receitas - coluna ausente no banco).");
+          } else {
+            throw new Error(`Erro nos produtos/receitas: ${error.message}`);
+          }
+        } else {
+          addLog("✅ Produtos e Receitas sincronizados com sucesso.");
+        }
       }
 
       // 3. SINCRONIZAR INSUMOS (acola_insumos -> insumos)
