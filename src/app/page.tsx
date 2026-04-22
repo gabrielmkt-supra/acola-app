@@ -229,6 +229,24 @@ export default function Home() {
     alert("Produto excluído com sucesso!");
   };
 
+  const handleDeleteProductById = async (id: string, name: string) => {
+    if (!confirm(`⚠️ ATENÇÃO: Deseja excluir permanentemente o produto "${name}"? Esta ação não pode ser desfeita.`)) return;
+
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error("Erro ao excluir produto:", error);
+      alert("Erro ao excluir produto do banco.");
+      return;
+    }
+
+    setInventory(inventory.filter(item => item.id !== id));
+    alert("Produto excluído com sucesso!");
+  };
+
   const compressImage = (base64Str: string): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -525,14 +543,23 @@ export default function Home() {
                             );
                           })()}
                         </td>
-                        <td className="px-6 py-5 text-right">
-                          <button
-                            onClick={() => router.push(`/novo-produto?id=${item.id}`)}
-                            title="Editar produto e receita"
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-variant/60 text-primary/30 hover:bg-secondary/15 hover:text-secondary transition-all duration-200 hover:scale-110 active:scale-95 cursor-pointer border border-primary/5"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">edit_note</span>
-                          </button>
+                        <td className="px-6 py-5">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleDeleteProductById(item.id, item.name)}
+                              title="Excluir produto"
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-variant/60 text-primary/30 hover:bg-error/15 hover:text-error transition-all duration-200 hover:scale-110 active:scale-95 cursor-pointer border border-primary/5"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">delete</span>
+                            </button>
+                            <button
+                              onClick={() => router.push(`/novo-produto?id=${item.id}`)}
+                              title="Editar produto e receita"
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-variant/60 text-primary/30 hover:bg-secondary/15 hover:text-secondary transition-all duration-200 hover:scale-110 active:scale-95 cursor-pointer border border-primary/5"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">edit_note</span>
+                            </button>
+                          </div>
                         </td>
                       </motion.tr>
                     ))}
