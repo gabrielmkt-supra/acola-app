@@ -352,12 +352,16 @@ export default function Movimentacoes() {
                                  </div>
                                  <p className="text-[8px] font-bold text-primary/40 uppercase tracking-widest">{formatDate(pedido.timestamp)}</p>
                               </div>
-                              <div className="flex items-center gap-4">
+                               <div className="flex items-center gap-4">
                                  <p className="text-xs font-black text-primary">R$ {formatUnitCost(pedido.total)}</p>
-                                 <button onClick={() => handleMarkAsPaid(pedido.id)} className="px-4 py-2 bg-green-50 text-green-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-green-600 hover:text-white transition-all shadow-sm active:scale-95">
-                                   Receber
+                                 <button 
+                                   onClick={() => handleMarkAsPaid(pedido.id)} 
+                                   title="Marcar como Pago"
+                                   className="w-10 h-10 bg-green-500/10 text-green-600 rounded-xl flex items-center justify-center hover:bg-green-600 hover:text-white transition-all shadow-sm active:scale-95 cursor-pointer"
+                                 >
+                                   <span className="material-symbols-outlined text-lg">payments</span>
                                  </button>
-                              </div>
+                               </div>
                            </div>
                          ))}
                       </div>

@@ -31,12 +31,13 @@ export default function PDVPage() {
   const [deliveryFee, setDeliveryFee] = useState(0);
   const [deliveryDate, setDeliveryDate] = useState("");
   
-  // Dados do Cliente
+  // Dados do Cliente e Pagamento
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [clientStreet, setClientStreet] = useState("");
   const [clientCity, setClientCity] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Cartão");
+  const [isFiado, setIsFiado] = useState(false); // Novo Estado para Fiado
 
   useEffect(() => {
     fetchProducts();
@@ -45,6 +46,7 @@ export default function PDVPage() {
   useEffect(() => {
     if (channel === "ifood") {
       setIsDelivery(true);
+      setIsFiado(false); // iFood nunca é fiado
       if (ifoodFeePct === 0) setIfoodFeePct(28.69);
     } else {
       setPlatformIncentives(0);
@@ -73,7 +75,6 @@ export default function PDVPage() {
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
-        // Verifica se a nova quantidade ultrapassa o estoque
         if (existing.qty + 1 > product.stock) {
           alert(`⚠️ Limite atingido! Só existem ${product.stock} unidades deste produto no estoque.`);
           return prev;
@@ -81,7 +82,6 @@ export default function PDVPage() {
         return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item);
       }
       
-      // Verifica estoque para o primeiro item
       if (product.stock <= 0) {
         alert("⚠️ Produto sem estoque disponível!");
         return prev;
@@ -102,23 +102,16 @@ export default function PDVPage() {
     setCart(prev => prev.map(item => {
       if (item.id === id) {
         const newQty = Math.max(1, item.qty + delta);
-        
-        // Trava se tentar aumentar além do estoque
-        if (delta > 0 && newQty > product.stock) {
-          return item;
-        }
-        
+        if (delta > 0 && newQty > product.stock) return item;
         return { ...item, qty: newQty };
       }
       return item;
     }));
   };
 
-  // LÓGICA DE COMBO: 3 geladinhos por 27,99
   const calculateSubtotal = () => {
     let total = 0;
     let geladinhosQty = 0;
-    
     cart.forEach(item => {
       if (item.category.toLowerCase().includes("geladinho")) {
         geladinhosQty += item.qty;
@@ -126,16 +119,11 @@ export default function PDVPage() {
         total += item.price * item.qty;
       }
     });
-
     const combos = Math.floor(geladinhosQty / 3);
     const remaining = geladinhosQty % 3;
     total += combos * 27.99;
-    
     const firstGeladinho = cart.find(i => i.category.toLowerCase().includes("geladinho"));
-    if (firstGeladinho && remaining > 0) {
-      total += remaining * firstGeladinho.price;
-    }
-
+    if (firstGeladinho && remaining > 0) total += remaining * firstGeladinho.price;
     return total;
   };
 
@@ -146,11 +134,17 @@ export default function PDVPage() {
 
   const handleFinalize = async () => {
     if (cart.length === 0) return;
+    
+    // Validar nome do cliente se for fiado
+    if (isFiado && !clientName) {
+      alert("⚠️ Para vendas fiado, o Nome do Cliente é obrigatório!");
+      return;
+    }
+
     setIsSaving(true);
 
     try {
       const timestamp = new Date().toISOString();
-      
       const itemsForOrder = cart.map(item => ({
         id: item.id,
         name: item.name,
@@ -165,8 +159,8 @@ export default function PDVPage() {
         client_address_street: isDelivery ? clientStreet : "",
         client_address_city: isDelivery ? clientCity : "",
         total: totalAmount,
-        payment_method: channel === "ifood" ? "iFood App" : paymentMethod,
-        payment_status: "pago",
+        payment_method: channel === "ifood" ? "iFood App" : (isFiado ? "Fiado" : paymentMethod),
+        payment_status: isFiado ? "pendente" : "pago",
         items: itemsForOrder,
         channel: channel,
         platform_fees: platformFeesAmount,
@@ -186,9 +180,7 @@ export default function PDVPage() {
         if (product) {
           const previousStock = Number(product.stock);
           const newStock = Math.max(0, previousStock - item.qty);
-          
           await supabase.from('products').update({ stock: newStock }).eq('id', item.id);
-
           await supabase.from('inventory_movements').insert([{
             product_id: item.id,
             product_name: item.name,
@@ -201,12 +193,11 @@ export default function PDVPage() {
         }
       }
 
-      alert("✅ Venda computada com sucesso!");
+      alert(isFiado ? "✅ Venda registrada como PENDENTE!" : "✅ Venda finalizada com sucesso!");
       router.push("/");
-
     } catch (e: any) {
       console.error(e);
-      alert("❌ Erro ao finalizar venda: " + e.message);
+      alert("❌ Erro ao finalizar: " + e.message);
     } finally {
       setIsSaving(false);
     }
@@ -214,7 +205,6 @@ export default function PDVPage() {
 
   return (
     <div className="flex h-[calc(100vh-80px)] overflow-hidden bg-background">
-      {/* Esquerda: Catálogo */}
       <div className="flex-1 flex flex-col p-6 overflow-hidden">
         <div className="flex gap-4 mb-6">
           <div className="relative flex-1">
@@ -227,64 +217,26 @@ export default function PDVPage() {
               className="w-full pl-12 pr-4 py-4 bg-surface border border-primary/5 rounded-[24px] text-sm font-bold text-primary focus:ring-2 focus:ring-secondary/20 outline-none transition-all"
             />
           </div>
-          
           <div className="flex bg-surface p-1 rounded-[24px] border border-primary/5">
-             <button 
-               onClick={() => { setChannel("balcao"); setIfoodFeePct(0); }}
-               className={cn(
-                 "px-6 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-widest transition-all",
-                 channel === "balcao" ? "bg-secondary text-primary-foreground shadow-lg" : "text-primary/30 hover:bg-primary/5"
-               )}
-             >
-               Venda Direta
-             </button>
-             <button 
-               onClick={() => { setChannel("ifood"); setIfoodFeePct(28.69); }}
-               className={cn(
-                 "px-6 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2",
-                 channel === "ifood" ? "bg-red-600 text-white shadow-lg shadow-red-600/20" : "text-primary/30 hover:bg-primary/5"
-               )}
-             >
-               {channel === "ifood" && <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
-               Canal iFood
-             </button>
+             <button onClick={() => { setChannel("balcao"); setIfoodFeePct(0); }} className={cn("px-6 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-widest transition-all", channel === "balcao" ? "bg-secondary text-primary-foreground shadow-lg" : "text-primary/30 hover:bg-primary/5")}>Venda Direta</button>
+             <button onClick={() => { setChannel("ifood"); setIfoodFeePct(28.69); }} className={cn("px-6 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2", channel === "ifood" ? "bg-red-600 text-white shadow-lg" : "text-primary/30 hover:bg-primary/5")}>Canal iFood</button>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-full opacity-20 font-black uppercase tracking-[0.3em]">Carregando Catálogo...</div>
-          ) : (
+          {isLoading ? <div className="flex items-center justify-center h-full opacity-20 font-black uppercase tracking-[0.3em]">Carregando Catálogo...</div> : (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
               {filteredProducts.map((p) => (
-                <motion.div 
-                  key={p.id}
-                  whileHover={p.stock > 0 ? { scale: 1.02 } : {}}
-                  whileTap={p.stock > 0 ? { scale: 0.98 } : {}}
-                  onClick={() => p.stock > 0 && addToCart(p)}
-                  className={cn(
-                    "bg-surface p-4 rounded-[32px] border border-primary/5 shadow-sm transition-all group flex flex-col h-full",
-                    p.stock > 0 ? "cursor-pointer hover:shadow-xl hover:border-secondary/20" : "opacity-50 grayscale cursor-not-allowed"
-                  )}
-                >
+                <motion.div key={p.id} whileHover={p.stock > 0 ? { scale: 1.02 } : {}} whileTap={p.stock > 0 ? { scale: 0.98 } : {}} onClick={() => p.stock > 0 && addToCart(p)} className={cn("bg-surface p-4 rounded-[32px] border border-primary/5 shadow-sm transition-all group flex flex-col h-full", p.stock > 0 ? "cursor-pointer hover:shadow-xl hover:border-secondary/20" : "opacity-50 grayscale cursor-not-allowed")}>
                   <div className="w-full aspect-square rounded-[24px] overflow-hidden mb-4 bg-background relative">
-                    <img 
-                      src={p.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.name)}&background=2a2a2a&color=c9a84c&bold=true`} 
-                      alt={p.name}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                    />
-                    <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full text-[9px] font-black text-white uppercase tracking-widest">
-                      {p.category}
-                    </div>
+                    <img src={p.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.name)}&background=2a2a2a&color=c9a84c&bold=true`} alt={p.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full text-[9px] font-black text-white uppercase tracking-widest">{p.category}</div>
                   </div>
                   <div className="flex flex-col flex-1 justify-between gap-2">
                     <h3 className="text-xs font-black text-primary uppercase tracking-tight line-clamp-2 leading-none">{p.name}</h3>
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-sm font-black text-secondary">R$ {formatUnitCost(p.price)}</span>
-                      <span className={cn(
-                        "text-[9px] font-bold px-2 py-1 rounded-lg",
-                        p.stock <= 5 ? "bg-error/10 text-error" : "bg-primary/5 text-primary/40"
-                      )}>{p.stock} UN</span>
+                      <span className={cn("text-[9px] font-bold px-2 py-1 rounded-lg", p.stock <= 5 ? "bg-error/10 text-error" : "bg-primary/5 text-primary/40")}>{p.stock} UN</span>
                     </div>
                   </div>
                 </motion.div>
@@ -294,132 +246,60 @@ export default function PDVPage() {
         </div>
       </div>
 
-      {/* Direita: Carrinho */}
       <div className="w-[450px] bg-surface border-l border-primary/5 flex flex-col shadow-2xl">
         <div className="p-6 border-b border-primary/5 bg-background/30">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-black text-primary uppercase italic tracking-tighter">Pedido / Cliente</h2>
             <div className="flex bg-background/50 p-1 rounded-xl border border-primary/5">
-               <button 
-                 onClick={() => setIsDelivery(false)}
-                 disabled={channel === "ifood"}
-                 className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all", !isDelivery ? "bg-secondary text-primary-foreground shadow-lg" : "text-primary/30 hover:bg-primary/5")}
-               >Balcão</button>
-               <button 
-                 onClick={() => setIsDelivery(true)}
-                 className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all", isDelivery ? "bg-secondary text-primary-foreground shadow-lg" : "text-primary/30 hover:bg-primary/5")}
-               >Entrega</button>
+               <button onClick={() => setIsDelivery(false)} disabled={channel === "ifood"} className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all", !isDelivery ? "bg-secondary text-primary-foreground shadow-lg" : "text-primary/30 hover:bg-primary/5")}>Balcão</button>
+               <button onClick={() => setIsDelivery(true)} className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all", isDelivery ? "bg-secondary text-primary-foreground shadow-lg" : "text-primary/30 hover:bg-primary/5")}>Entrega</button>
             </div>
           </div>
           
           <div className="grid grid-cols-2 gap-3">
             <div className="relative col-span-2">
                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">person</span>
-               <input 
-                 type="text" 
-                 placeholder="Nome do Cliente"
-                 value={clientName}
-                 onChange={(e) => setClientName(e.target.value)}
-                 className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30 transition-all"
-               />
+               <input type="text" placeholder="Nome do Cliente" value={clientName} onChange={(e) => setClientName(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30 transition-all" />
             </div>
-            
             <div className="relative col-span-2">
                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">call</span>
-               <input 
-                 type="text" 
-                 placeholder="WhatsApp / Contato"
-                 value={clientPhone}
-                 onChange={(e) => setClientPhone(e.target.value)}
-                 className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30 transition-all"
-               />
+               <input type="text" placeholder="WhatsApp / Contato" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30 transition-all" />
             </div>
 
-            {/* CAMPOS CONDICIONAIS DE ENTREGA */}
             <AnimatePresence>
               {isDelivery && (
-                <motion.div 
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="col-span-2 grid grid-cols-2 gap-3 overflow-hidden"
-                >
-                  <div className="relative">
-                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">location_city</span>
-                    <input 
-                      type="text" 
-                      placeholder="Cidade"
-                      value={clientCity}
-                      onChange={(e) => setClientCity(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30"
-                    />
-                  </div>
-                  <div className="relative">
-                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">calendar_today</span>
-                    <input 
-                      type="datetime-local" 
-                      value={deliveryDate}
-                      onChange={(e) => setDeliveryDate(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30"
-                    />
-                  </div>
-                  <div className="relative col-span-2">
-                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">home</span>
-                    <input 
-                      type="text" 
-                      placeholder="Endereço (Rua, Número, Bairro)"
-                      value={clientStreet}
-                      onChange={(e) => setClientStreet(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30"
-                    />
-                  </div>
-                  <div className="space-y-1 col-span-2">
-                    <label className="text-[8px] font-black uppercase text-primary/40 ml-1">Taxa de Entrega (R$)</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-primary/20">R$</span>
-                      <input 
-                        type="number"
-                        value={deliveryFee}
-                        onChange={(e) => setDeliveryFee(Number(e.target.value))}
-                        className="w-full pl-9 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-black text-primary outline-none"
-                      />
-                    </div>
-                  </div>
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="col-span-2 grid grid-cols-2 gap-3 overflow-hidden">
+                  <div className="relative"><span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">location_city</span><input type="text" placeholder="Cidade" value={clientCity} onChange={(e) => setClientCity(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30" /></div>
+                  <div className="relative"><span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">calendar_today</span><input type="datetime-local" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30" /></div>
+                  <div className="relative col-span-2"><span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-primary/30 text-base">home</span><input type="text" placeholder="Endereço Completo" value={clientStreet} onChange={(e) => setClientStreet(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30" /></div>
+                  <div className="space-y-1 col-span-2"><label className="text-[8px] font-black uppercase text-primary/40 ml-1">Taxa de Entrega</label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-primary/20">R$</span><input type="number" value={deliveryFee} onChange={(e) => setDeliveryFee(Number(e.target.value))} className="w-full pl-9 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-black text-primary outline-none" /></div></div>
                 </motion.div>
               )}
             </AnimatePresence>
 
+            <div className="col-span-2 space-y-2 mt-2">
+              <label className="text-[8px] font-black uppercase text-primary/40 ml-1">Forma de Pagamento</label>
+              <div className="grid grid-cols-2 gap-2">
+                {channel === "ifood" ? (
+                  <div className="col-span-2 py-2.5 bg-red-600/10 border border-red-600/20 rounded-xl text-center text-[10px] font-black text-red-600 uppercase">Pagamento via iFood App</div>
+                ) : (
+                  <>
+                    <select value={paymentMethod} onChange={(e) => { setPaymentMethod(e.target.value); setIsFiado(e.target.value === "Fiado"); }} className="col-span-2 py-2.5 px-4 bg-background border border-primary/5 rounded-xl text-[11px] font-bold text-primary outline-none focus:border-secondary/30">
+                      <option value="Cartão">Cartão</option>
+                      <option value="Pix">Pix</option>
+                      <option value="Dinheiro">Dinheiro</option>
+                      <option value="Fiado">Pagar Depois (Fiado)</option>
+                    </select>
+                  </>
+                )}
+              </div>
+            </div>
+
             {channel === "ifood" && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="col-span-2 grid grid-cols-2 gap-3"
-              >
-                <div className="space-y-1">
-                  <label className="text-[8px] font-black uppercase text-primary/40 ml-1">Taxa iFood (%)</label>
-                  <div className="relative">
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-primary/20">%</span>
-                    <input 
-                      type="number"
-                      value={ifoodFeePct}
-                      onChange={(e) => setIfoodFeePct(Number(e.target.value))}
-                      className="w-full px-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-black text-primary outline-none"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[8px] font-black uppercase text-primary/40 ml-1">Incentivos iFood (R$)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-primary/20">R$</span>
-                    <input 
-                      type="number"
-                      value={platformIncentives}
-                      onChange={(e) => setPlatformIncentives(Number(e.target.value))}
-                      className="w-full pl-9 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-black text-primary outline-none"
-                    />
-                  </div>
-                </div>
-              </motion.div>
+              <div className="col-span-2 grid grid-cols-2 gap-3 mt-2">
+                <div className="space-y-1"><label className="text-[8px] font-black uppercase text-primary/40 ml-1">Taxa iFood (%)</label><div className="relative"><span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-primary/20">%</span><input type="number" value={ifoodFeePct} onChange={(e) => setIfoodFeePct(Number(e.target.value))} className="w-full px-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-black text-primary outline-none" /></div></div>
+                <div className="space-y-1"><label className="text-[8px] font-black uppercase text-primary/40 ml-1">Incentivos (R$)</label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-primary/20">R$</span><input type="number" value={platformIncentives} onChange={(e) => setPlatformIncentives(Number(e.target.value))} className="w-full pl-9 pr-4 py-2.5 bg-background border border-primary/5 rounded-xl text-[11px] font-black text-primary outline-none" /></div></div>
+              </div>
             )}
           </div>
         </div>
@@ -435,15 +315,8 @@ export default function PDVPage() {
               {cart.map((item) => {
                 const p = products.find(prod => prod.id === item.id);
                 const isAtLimit = p && item.qty >= p.stock;
-
                 return (
-                  <motion.div 
-                    key={item.id}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    className="flex items-center gap-3 bg-background/50 p-3 rounded-2xl border border-primary/5"
-                  >
+                  <motion.div key={item.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex items-center gap-3 bg-background/50 p-3 rounded-2xl border border-primary/5">
                     <div className="flex-1">
                       <h4 className="text-[10px] font-black text-primary uppercase tracking-tight mb-0.5">{item.name}</h4>
                       <p className="text-[9px] font-bold text-secondary">R$ {formatUnitCost(item.price)}</p>
@@ -451,17 +324,9 @@ export default function PDVPage() {
                     <div className="flex items-center bg-background rounded-lg border border-primary/5 p-0.5">
                       <button onClick={() => updateQty(item.id, -1)} className="w-5 h-5 flex items-center justify-center text-primary/40"><span className="material-symbols-outlined text-xs">remove</span></button>
                       <span className="w-6 text-center text-[10px] font-black">{item.qty}</span>
-                      <button 
-                        onClick={() => updateQty(item.id, 1)} 
-                        disabled={isAtLimit}
-                        className={cn("w-5 h-5 flex items-center justify-center transition-colors", isAtLimit ? "text-primary/10 cursor-not-allowed" : "text-primary/40")}
-                      >
-                        <span className="material-symbols-outlined text-xs">add</span>
-                      </button>
+                      <button onClick={() => updateQty(item.id, 1)} disabled={isAtLimit} className={cn("w-5 h-5 flex items-center justify-center transition-colors", isAtLimit ? "text-primary/10 cursor-not-allowed" : "text-primary/40")}><span className="material-symbols-outlined text-xs">add</span></button>
                     </div>
-                    <button onClick={() => removeFromCart(item.id)} className="text-error/30 hover:text-error transition-all cursor-pointer">
-                      <span className="material-symbols-outlined text-xs">delete</span>
-                    </button>
+                    <button onClick={() => removeFromCart(item.id)} className="text-error/30 hover:text-error transition-all cursor-pointer"><span className="material-symbols-outlined text-xs">delete</span></button>
                   </motion.div>
                 );
               })}
@@ -471,35 +336,19 @@ export default function PDVPage() {
 
         <div className="p-6 bg-background/50 border-t border-primary/5 space-y-4">
           <div className="space-y-1.5">
-            <div className="flex justify-between text-primary/40 text-[9px] font-bold uppercase tracking-widest">
-              <span>Subtotal Itens</span>
-              <span>R$ {formatUnitCost(subtotal)}</span>
-            </div>
-            {isDelivery && deliveryFee > 0 && (
-              <div className="flex justify-between text-primary/40 text-[9px] font-bold uppercase tracking-widest">
-                <span>Taxa de Entrega</span>
-                <span>+ R$ {formatUnitCost(deliveryFee)}</span>
-              </div>
-            )}
+            <div className="flex justify-between text-primary/40 text-[9px] font-bold uppercase tracking-widest"><span>Subtotal Itens</span><span>R$ {formatUnitCost(subtotal)}</span></div>
+            {isDelivery && deliveryFee > 0 && <div className="flex justify-between text-primary/40 text-[9px] font-bold uppercase tracking-widest"><span>Taxa de Entrega</span><span>+ R$ {formatUnitCost(deliveryFee)}</span></div>}
             {channel === "ifood" && (
               <>
-                <div className="flex justify-between text-red-500/60 text-[9px] font-bold uppercase tracking-widest">
-                  <span>Comissão iFood ({ifoodFeePct}%)</span>
-                  <span>- R$ {formatUnitCost(platformFeesAmount)}</span>
-                </div>
-                {platformIncentives > 0 && (
-                  <div className="flex justify-between text-red-500/60 text-[9px] font-bold uppercase tracking-widest">
-                    <span>Incentivos iFood</span>
-                    <span>- R$ {formatUnitCost(platformIncentives)}</span>
-                  </div>
-                )}
+                <div className="flex justify-between text-red-500/60 text-[9px] font-bold uppercase tracking-widest"><span>Comissão iFood ({ifoodFeePct}%)</span><span>- R$ {formatUnitCost(platformFeesAmount)}</span></div>
+                {platformIncentives > 0 && <div className="flex justify-between text-red-500/60 text-[9px] font-bold uppercase tracking-widest"><span>Incentivos iFood</span><span>- R$ {formatUnitCost(platformIncentives)}</span></div>}
               </>
             )}
             <div className="h-px bg-primary/5 my-3" />
             <div className="flex justify-between items-end">
                <div>
-                  <p className="text-[9px] font-black text-primary/40 uppercase tracking-[0.2em] mb-1">Total Cliente</p>
-                  <p className="text-3xl font-black text-primary italic tracking-tighter">R$ {formatUnitCost(totalAmount)}</p>
+                  <p className="text-[9px] font-black text-primary/40 uppercase tracking-[0.2em] mb-1">{isFiado ? "A Receber (Fiado)" : "Total Cliente"}</p>
+                  <p className={cn("text-3xl font-black italic tracking-tighter", isFiado ? "text-secondary" : "text-primary")}>R$ {formatUnitCost(totalAmount)}</p>
                </div>
                {channel === "ifood" && (
                  <div className="text-right">
@@ -509,16 +358,8 @@ export default function PDVPage() {
                )}
             </div>
           </div>
-
-          <button 
-            disabled={cart.length === 0 || isSaving}
-            onClick={handleFinalize}
-            className={cn(
-              "w-full py-5 rounded-[20px] text-[10px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-3 shadow-xl",
-              cart.length === 0 ? "bg-primary/5 text-primary/20 cursor-not-allowed" : "bg-secondary text-primary-foreground hover:scale-[1.02] active:scale-95 shadow-secondary/20"
-            )}
-          >
-            {isSaving ? <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /> : "Finalizar Venda"}
+          <button disabled={cart.length === 0 || isSaving} onClick={handleFinalize} className={cn("w-full py-5 rounded-[20px] text-[10px] font-black uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-3 shadow-xl", cart.length === 0 ? "bg-primary/5 text-primary/20 cursor-not-allowed" : isFiado ? "bg-secondary text-primary shadow-lg shadow-secondary/20" : "bg-secondary text-primary-foreground hover:scale-[1.02] active:scale-95 shadow-secondary/20")}>
+            {isSaving ? <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /> : isFiado ? "Registrar Fiado" : "Finalizar Venda"}
           </button>
         </div>
       </div>
