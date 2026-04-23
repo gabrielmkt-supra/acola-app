@@ -29,28 +29,47 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Carregar dados reais do Supabase
-  const fetchData = async () => {
+  const fetchData = async (retryCount = 0) => {
     setIsLoading(true);
     try {
-      // 1. Produtos
-      const { data: products } = await supabase.from('products').select('*').order('name');
-      if (products) setInventory(products);
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      // 2. Vendas (Orders)
-      const { data: sales } = await supabase.from('orders').select('*').order('timestamp', { ascending: false });
-      if (sales) setVendas(sales.map(s => ({
+      // Carregamento paralelo para máxima performance
+      const [productsRes, salesRes, purchasesRes] = await Promise.all([
+        supabase.from('products').select('*').order('name'),
+        supabase.from('orders')
+          .select('id, total, timestamp, payment_status, client_name')
+          .gte('timestamp', thirtyDaysAgo.toISOString())
+          .order('timestamp', { ascending: false }),
+        supabase.from('purchases')
+          .select('id, total_price, date, item_name')
+          .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
+          .order('date', { ascending: false })
+      ]);
+
+      // Verificação de erros em lote
+      if (productsRes.error) throw productsRes.error;
+      if (salesRes.error) throw salesRes.error;
+      if (purchasesRes.error) throw purchasesRes.error;
+
+      if (productsRes.data) setInventory(productsRes.data);
+      
+      if (salesRes.data) setVendas(salesRes.data.map((s: any) => ({
         ...s,
         paymentStatus: s.payment_status || 'pago',
-        clientName: s.client_name || 'Cliente Balcão',
-        clientPhone: s.client_phone || ''
+        clientName: s.client_name || 'Cliente Balcão'
       })));
 
-      // 3. Compras (Purchases)
-      const { data: purchases } = await supabase.from('purchases').select('*').order('date', { ascending: false });
-      if (purchases) setCompras(purchases);
+      if (purchasesRes.data) setCompras(purchasesRes.data);
 
-    } catch (error) {
-      console.error("Erro ao carregar dados:", error);
+    } catch (error: any) {
+      console.error("Erro ao carregar dados (Tentativa " + retryCount + "):", error);
+      
+      // Lógica simples de retry para falhas intermitentes
+      if (retryCount < 2) {
+        setTimeout(() => fetchData(retryCount + 1), 1000);
+      }
     } finally {
       setIsLoading(false);
     }

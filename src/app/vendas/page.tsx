@@ -62,14 +62,28 @@ export default function PDVPage() {
     }
   }, [channel]);
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (retryCount = 0) => {
     setIsLoading(true);
-    const { data } = await supabase.from('products').select('*').order('name');
-    if (data) {
-      setProducts(data);
-      setFilteredProducts(data);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, name, price, stock, category, image')
+        .order('name');
+      
+      if (error) throw error;
+
+      if (data) {
+        setProducts(data);
+        setFilteredProducts(data);
+      }
+    } catch (error: any) {
+      console.error(`Erro ao carregar produtos (Tentativa ${retryCount}):`, error);
+      if (retryCount < 2) {
+        setTimeout(() => fetchProducts(retryCount + 1), 1000);
+      }
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   useEffect(() => {
