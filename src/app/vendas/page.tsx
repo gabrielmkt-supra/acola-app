@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { cn, formatUnitCost } from "@/lib/utils";
-import { invalidateProductsCache } from "@/lib/cache";
+import { invalidateProductsCache, getCachedProducts, setCachedProducts } from "@/lib/cache";
 
 interface CartItem {
   id: string;
@@ -67,6 +67,15 @@ export default function PDVPage() {
   const fetchProducts = async (retryCount = 0) => {
     setIsLoading(true);
     try {
+      // Tenta usar cache (carregamento instantâneo)
+      const cached = getCachedProducts();
+      if (cached) {
+        setProducts(cached);
+        setFilteredProducts(cached);
+        setIsLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('products')
         .select('id, name, price, stock, category, image')
@@ -77,6 +86,7 @@ export default function PDVPage() {
       if (data) {
         setProducts(data);
         setFilteredProducts(data);
+        setCachedProducts(data); // Persiste no cache para próximas visitas
       }
     } catch (error: unknown) {
       console.error(`Erro ao carregar produtos (Tentativa ${retryCount}):`, error);

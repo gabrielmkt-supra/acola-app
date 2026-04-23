@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import { getCachedProducts, setCachedProducts, invalidateProductsCache } from "@/lib/cache";
 
 export default function ReporEstoque() {
   const router = useRouter();
@@ -27,8 +28,24 @@ export default function ReporEstoque() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const { data: prodData } = await supabase.from('products').select('*').order('name');
-      if (prodData) setInventory(prodData);
+      // Usa cache de produtos se disponível (evita download a cada abertura)
+      const cached = getCachedProducts();
+      if (cached) {
+        setInventory(cached);
+        setIsLoading(false);
+        return;
+      }
+
+      const { data: prodData, error } = await supabase
+        .from('products')
+        .select('id, name, stock, category, image')
+        .order('name');
+
+      if (error) throw error;
+      if (prodData) {
+        setInventory(prodData);
+        setCachedProducts(prodData); // Salva no cache para próximas visitas
+      }
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
     } finally {
@@ -104,6 +121,7 @@ export default function ReporEstoque() {
         }
       }
 
+      invalidateProductsCache(); // Estoque mudou: invalida cache
       addToast("Estoque atualizado com sucesso!", "success");
       await new Promise(resolve => setTimeout(resolve, 800));
       router.push("/");

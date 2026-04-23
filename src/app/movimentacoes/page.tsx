@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { formatUnitCost } from "@/lib/utils";
+import { getCachedProducts, setCachedProducts } from "@/lib/cache";
 
 interface Movement {
   id: string;
@@ -30,9 +31,26 @@ export default function Movimentacoes() {
 
   const fetchData = async () => {
     try {
-      // 1. Histórico de Movimentações
-      const { data: movements } = await supabase.from('inventory_movements').select('*').order('timestamp', { ascending: false });
-      if (movements) setHistory(movements.map(m => ({
+      // Cache para produtos (evita round-trip desnecário ao banco)
+      const cachedProducts = getCachedProducts();
+
+      // Movimentações e Vendas em paralelo (apenas colunas necessárias)
+      const [movRes, salesRes, prodsRes] = await Promise.all([
+        supabase
+          .from('inventory_movements')
+          .select('id, timestamp, product_id, product_name, type, amount, previous_stock, final_stock, note')
+          .order('timestamp', { ascending: false })
+          .limit(200), // Limita a 200 últimas movimentações
+        supabase
+          .from('orders')
+          .select('id, total, timestamp, payment_status, client_name, client_phone, items')
+          .order('timestamp', { ascending: false })
+          .limit(100), // Últimos 100 pedidos
+        cachedProducts ? Promise.resolve({ data: cachedProducts, error: null }) :
+          supabase.from('products').select('id, name, stock, category').order('name')
+      ]);
+
+      if (movRes.data) setHistory(movRes.data.map(m => ({
         id: m.id,
         timestamp: m.timestamp,
         productId: m.product_id,
@@ -44,13 +62,12 @@ export default function Movimentacoes() {
         note: m.note
       })));
 
-      // 2. Vendas (Orders)
-      const { data: sales } = await supabase.from('orders').select('*').order('timestamp', { ascending: false });
-      if (sales) setVendas(sales);
+      if (salesRes.data) setVendas(salesRes.data);
 
-      // 3. Inventário (Products) - Para estornos
-      const { data: prods } = await supabase.from('products').select('*');
-      if (prods) setInventory(prods);
+      if (prodsRes.data) {
+        setInventory(prodsRes.data);
+        if (!cachedProducts) setCachedProducts(prodsRes.data);
+      }
 
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
