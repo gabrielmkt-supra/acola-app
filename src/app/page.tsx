@@ -37,38 +37,56 @@ export default function Home() {
   const fetchData = async (retryCount = 0) => {
     setIsLoading(true);
     try {
-      // Usa cache SOMENTE se tiver produtos válidos (evita array vazio gravado)
-      const cached = getCachedProducts();
-      if (cached && cached.length > 0) {
-        setInventory(cached);
-        setIsLoading(false);
-      } else {
-        // Busca todos os produtos do banco (select * para não perder nenhuma coluna)
-        const { data: prodData, error: prodError } = await supabase
-          .from('products')
-          .select('*')
-          .order('name');
+      const { data: prodData, error: prodError } = await supabase
+        .from('products')
+        .select('*')
+        .order('name');
 
-        if (prodError) {
-          console.error("Erro ao buscar produtos:", prodError);
-        } else if (prodData && prodData.length > 0) {
-          setInventory(prodData);
-          setCachedProducts(prodData); // Só grava cache se vier dados reais
-        }
-        setIsLoading(false);
+      if (prodError) {
+        console.error("Erro Supabase ao buscar produtos:", prodError.message);
       }
 
-      // Stats em background (não bloqueia a listagem de produtos)
+      if (prodData && prodData.length > 0) {
+        // Supabase retornou produtos: usa normalmente
+        setInventory(prodData);
+        setCachedProducts(prodData);
+      } else {
+        // Supabase vazio ou com erro: usa localStorage como fallback
+        console.warn("Supabase retornou vazio. Usando localStorage como fallback.");
+        try {
+          const localRaw = localStorage.getItem("acola_estoque");
+          if (localRaw) {
+            const localProducts = JSON.parse(localRaw);
+            if (localProducts.length > 0) {
+              setInventory(localProducts.map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                price: Number(p.sale_price || p.price || 0),
+                cost: Number(p.cost || 0),
+                stock: Number(p.current_stock || p.stock || 0),
+                category: p.category || '',
+                image: p.image || '',
+                status: 'active',
+              })));
+            }
+          }
+        } catch (localErr) {
+          console.error("Erro ao ler localStorage:", localErr);
+        }
+      }
+
+      // Stats em background (não bloqueia a listagem)
       supabase.rpc('get_dashboard_stats').then(({ data, error }) => {
         if (!error && data) setDashStats(data);
       });
 
     } catch (error: unknown) {
-      console.error("Erro ao carregar dados (Tentativa " + retryCount + "):", error);
-      setIsLoading(false);
+      console.error("Erro crítico ao carregar dados (Tentativa " + retryCount + "):", error);
       if (retryCount < 2) {
         setTimeout(() => fetchData(retryCount + 1), 1500);
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
