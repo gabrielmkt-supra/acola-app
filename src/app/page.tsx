@@ -37,68 +37,36 @@ export default function Home() {
   const fetchData = async (retryCount = 0) => {
     setIsLoading(true);
     try {
-      // 1. Tenta usar cache de produtos (evita download a cada abertura)
+      // PASSO 1: Produtos (prioritário, independente)
+      // Usa cache se válido — senão busca no banco com colunas específicas (sem 'recipe')
       const cached = getCachedProducts();
-
-      // 2. Carregamento paralelo: RPC de stats + produtos (se sem cache)
-      const requests: Promise<any>[] = [
-        supabase.rpc('get_dashboard_stats')
-      ];
-
-      if (!cached) {
-        requests.push(
-          supabase.from('products').select('*').order('name')
-        );
-      }
-
-      const results = await Promise.all(requests);
-      const statsRes = results[0];
-      const productsRes = results[1] ?? null;
-
-      if (statsRes.error) throw statsRes.error;
-
-      // Aplica stats do Supabase (rápido, sem dados brutos)
-      if (statsRes.data) setDashStats(statsRes.data);
-
-      // Aplica produtos do cache ou do Supabase
       if (cached) {
         setInventory(cached);
-      } else if (productsRes?.data) {
-        setInventory(productsRes.data);
-        setCachedProducts(productsRes.data); // Salva no cache
+        setIsLoading(false); // Libera a tela imediatamente
+      } else {
+        const { data: prodData, error: prodError } = await supabase
+          .from('products')
+          .select('id, name, price, cost, stock, category, image, status, subtype')
+          .order('name');
+
+        if (!prodError && prodData) {
+          setInventory(prodData);
+          setCachedProducts(prodData);
+        }
+        setIsLoading(false);
       }
 
-      // Se a RPC não estiver disponível ainda, busca vendas/compras como fallback
-      if (!statsRes.data) {
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-        const [salesRes, purchasesRes] = await Promise.all([
-          supabase.from('orders')
-            .select('id, total, timestamp, payment_status, client_name')
-            .gte('timestamp', thirtyDaysAgo.toISOString())
-            .order('timestamp', { ascending: false }),
-          supabase.from('purchases')
-            .select('id, total_price, date')
-            .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
-            .order('date', { ascending: false })
-        ]);
-
-        if (salesRes.data) setVendas(salesRes.data.map((s) => ({
-          ...s,
-          paymentStatus: s.payment_status || 'pago',
-          clientName: s.client_name || 'Cliente Balcão'
-        })));
-        if (purchasesRes.data) setCompras(purchasesRes.data);
-      }
+      // PASSO 2: Stats do Dashboard (em background, não bloqueia a tela)
+      supabase.rpc('get_dashboard_stats').then(({ data, error }) => {
+        if (!error && data) setDashStats(data);
+      });
 
     } catch (error: unknown) {
       console.error("Erro ao carregar dados (Tentativa " + retryCount + "):", error);
+      setIsLoading(false);
       if (retryCount < 2) {
         setTimeout(() => fetchData(retryCount + 1), 1500);
       }
-    } finally {
-      setIsLoading(false);
     }
   };
 
