@@ -37,26 +37,28 @@ export default function Home() {
   const fetchData = async (retryCount = 0) => {
     setIsLoading(true);
     try {
-      // PASSO 1: Produtos (prioritário, independente)
-      // Usa cache se válido — senão busca no banco com colunas específicas (sem 'recipe')
+      // Usa cache SOMENTE se tiver produtos válidos (evita array vazio gravado)
       const cached = getCachedProducts();
-      if (cached) {
+      if (cached && cached.length > 0) {
         setInventory(cached);
-        setIsLoading(false); // Libera a tela imediatamente
+        setIsLoading(false);
       } else {
+        // Busca todos os produtos do banco (select * para não perder nenhuma coluna)
         const { data: prodData, error: prodError } = await supabase
           .from('products')
-          .select('id, name, price, cost, stock, category, image, status, subtype')
+          .select('*')
           .order('name');
 
-        if (!prodError && prodData) {
+        if (prodError) {
+          console.error("Erro ao buscar produtos:", prodError);
+        } else if (prodData && prodData.length > 0) {
           setInventory(prodData);
-          setCachedProducts(prodData);
+          setCachedProducts(prodData); // Só grava cache se vier dados reais
         }
         setIsLoading(false);
       }
 
-      // PASSO 2: Stats do Dashboard (em background, não bloqueia a tela)
+      // Stats em background (não bloqueia a listagem de produtos)
       supabase.rpc('get_dashboard_stats').then(({ data, error }) => {
         if (!error && data) setDashStats(data);
       });

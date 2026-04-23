@@ -33,6 +33,7 @@ export function getCachedProducts(): any[] | null {
 }
 
 export function setCachedProducts(products: any[]): void {
+  if (!products || products.length === 0) return; // Nunca grava array vazio
   try {
     const cache: AcolaCache = {
       products,
