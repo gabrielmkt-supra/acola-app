@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { cn, formatUnitCost } from "@/lib/utils";
+import { invalidateProductsCache } from "@/lib/cache";
 
 interface CartItem {
   id: string;
@@ -234,6 +235,7 @@ export default function PDVPage() {
         }
       }
 
+      invalidateProductsCache(); // Estoque mudou: invalida cache
       alert(isFiado ? "✅ Venda registrada como PENDENTE!" : "✅ Venda finalizada com sucesso!");
       router.push("/");
     } catch (e: unknown) {

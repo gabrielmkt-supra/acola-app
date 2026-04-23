@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase";
 
 import { cn, formatUnitCost } from "@/lib/utils";
 import { getSettings } from "@/lib/settings";
+import { getCachedProducts, setCachedProducts, invalidateProductsCache } from "@/lib/cache";
 
 export default function Home() {
   const router = useRouter();
@@ -29,48 +30,72 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Stats vindas da RPC (calculadas no Supabase)
+  const [dashStats, setDashStats] = useState<any>(null);
+
   // Carregar dados reais do Supabase
   const fetchData = async (retryCount = 0) => {
     setIsLoading(true);
     try {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      // 1. Tenta usar cache de produtos (evita download a cada abertura)
+      const cached = getCachedProducts();
 
-      // Carregamento paralelo para máxima performance
-      const [productsRes, salesRes, purchasesRes] = await Promise.all([
-        supabase.from('products').select('*').order('name'),
-        supabase.from('orders')
-          .select('id, total, timestamp, payment_status, client_name')
-          .gte('timestamp', thirtyDaysAgo.toISOString())
-          .order('timestamp', { ascending: false }),
-        supabase.from('purchases')
-          .select('id, total_price, date, item_name')
-          .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
-          .order('date', { ascending: false })
-      ]);
+      // 2. Carregamento paralelo: RPC de stats + produtos (se sem cache)
+      const requests: Promise<any>[] = [
+        supabase.rpc('get_dashboard_stats')
+      ];
 
-      // Verificação de erros em lote
-      if (productsRes.error) throw productsRes.error;
-      if (salesRes.error) throw salesRes.error;
-      if (purchasesRes.error) throw purchasesRes.error;
+      if (!cached) {
+        requests.push(
+          supabase.from('products').select('*').order('name')
+        );
+      }
 
-      if (productsRes.data) setInventory(productsRes.data);
-      
-      if (salesRes.data) setVendas(salesRes.data.map((s) => ({
-        ...s,
-        paymentStatus: s.payment_status || 'pago',
-        clientName: s.client_name || 'Cliente Balcão'
-      })));
+      const results = await Promise.all(requests);
+      const statsRes = results[0];
+      const productsRes = results[1] ?? null;
 
-      if (purchasesRes.data) setCompras(purchasesRes.data);
+      if (statsRes.error) throw statsRes.error;
+
+      // Aplica stats do Supabase (rápido, sem dados brutos)
+      if (statsRes.data) setDashStats(statsRes.data);
+
+      // Aplica produtos do cache ou do Supabase
+      if (cached) {
+        setInventory(cached);
+      } else if (productsRes?.data) {
+        setInventory(productsRes.data);
+        setCachedProducts(productsRes.data); // Salva no cache
+      }
+
+      // Se a RPC não estiver disponível ainda, busca vendas/compras como fallback
+      if (!statsRes.data) {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const [salesRes, purchasesRes] = await Promise.all([
+          supabase.from('orders')
+            .select('id, total, timestamp, payment_status, client_name')
+            .gte('timestamp', thirtyDaysAgo.toISOString())
+            .order('timestamp', { ascending: false }),
+          supabase.from('purchases')
+            .select('id, total_price, date')
+            .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
+            .order('date', { ascending: false })
+        ]);
+
+        if (salesRes.data) setVendas(salesRes.data.map((s) => ({
+          ...s,
+          paymentStatus: s.payment_status || 'pago',
+          clientName: s.client_name || 'Cliente Balcão'
+        })));
+        if (purchasesRes.data) setCompras(purchasesRes.data);
+      }
 
     } catch (error: unknown) {
-      const err = error as { message?: string };
       console.error("Erro ao carregar dados (Tentativa " + retryCount + "):", error);
-      
-      // Lógica simples de retry para falhas intermitentes
       if (retryCount < 2) {
-        setTimeout(() => fetchData(retryCount + 1), 1000);
+        setTimeout(() => fetchData(retryCount + 1), 1500);
       }
     } finally {
       setIsLoading(false);
@@ -87,55 +112,57 @@ export default function Home() {
   }, []);
 
   // Lógicas de Cálculo Dinâmico
-  const getSalesTotal = (period: "dia" | "semana" | "mes") => {
-    const now = new Date();
-    const filtered = vendas.filter(venda => {
-      // APENAS VENDAS PAGAS entram no faturamento real
-      if (venda.paymentStatus === "pendente") return false;
-
-      const vDate = new Date(venda.timestamp);
-      if (period === "dia") {
-        return vDate.toDateString() === now.toDateString();
-      }
-      if (period === "semana") {
-        const diff = (now.getTime() - vDate.getTime()) / (1000 * 60 * 60 * 24);
-        return diff <= 7;
-      }
-      if (period === "mes") {
-        return vDate.getMonth() === now.getMonth() && vDate.getFullYear() === now.getFullYear();
-      }
-      return false;
-    });
-    return filtered.reduce((acc, curr) => acc + curr.total, 0);
-  };
- 
-  const getPurchasesTotal = (period: "dia" | "semana" | "mes") => {
-    const now = new Date();
-    const filtered = compras.filter(compra => {
-      const cDate = new Date(compra.date); // Tabela usa 'date'
-      if (period === "dia") {
-        return cDate.toDateString() === now.toDateString();
-      }
-      if (period === "semana") {
-        const diff = (now.getTime() - cDate.getTime()) / (1000 * 60 * 60 * 24);
-        return diff <= 7;
-      }
-      if (period === "mes") {
-        return cDate.getMonth() === now.getMonth() && cDate.getFullYear() === now.getFullYear();
-      }
-      return false;
-    });
-    return filtered.reduce((acc, curr) => acc + (curr.total_price || 0), 0); // Tabela usa 'total_price'
-  };
-
-  const totalPending = vendas
-    .filter(v => v.paymentStatus === "pendente")
-    .reduce((acc, curr) => acc + curr.total, 0);
-
   const formatCurrency = (val: number) => {
     if (val >= 1000) return `R$ ${(val / 1000).toFixed(1)}k`;
     return `R$ ${val.toFixed(0)}`;
   };
+
+  // Lê stats da RPC (rápido) ou calcula localmente como fallback
+  const getSalesTotal = (period: "dia" | "semana" | "mes"): number => {
+    if (dashStats?.sales) {
+      if (period === "dia") return dashStats.sales.today ?? 0;
+      if (period === "semana") return dashStats.sales.week ?? 0;
+      if (period === "mes") return dashStats.sales.month ?? 0;
+    }
+    // Fallback: cálculo local (quando RPC ainda não está disponível)
+    const now = new Date();
+    return vendas
+      .filter(v => v.paymentStatus !== "pendente")
+      .filter(v => {
+        const d = new Date(v.timestamp);
+        if (period === "dia") return d.toDateString() === now.toDateString();
+        if (period === "semana") return (now.getTime() - d.getTime()) / 864e5 <= 7;
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      })
+      .reduce((acc, curr) => acc + curr.total, 0);
+  };
+
+  const getPurchasesTotal = (period: "dia" | "semana" | "mes"): number => {
+    if (dashStats?.purchases) {
+      if (period === "dia") return dashStats.purchases.today ?? 0;
+      if (period === "semana") return dashStats.purchases.week ?? 0;
+      if (period === "mes") return dashStats.purchases.month ?? 0;
+    }
+    const now = new Date();
+    return compras
+      .filter(c => {
+        const d = new Date(c.date);
+        if (period === "dia") return d.toDateString() === now.toDateString();
+        if (period === "semana") return (now.getTime() - d.getTime()) / 864e5 <= 7;
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      })
+      .reduce((acc, curr) => acc + (curr.total_price || 0), 0);
+  };
+
+  const totalPending = dashStats?.sales?.pending
+    ?? vendas.filter(v => v.paymentStatus === "pendente").reduce((acc, curr) => acc + curr.total, 0);
+
+  const totalUnits = dashStats?.stock?.total_units
+    ?? inventory.reduce((acc, curr) => acc + (curr.stock || 0), 0);
+
+  const stockValueTotal = dashStats?.stock?.stock_value
+    ?? inventory.reduce((acc, curr) => acc + (Number(curr.price || 0) * (curr.stock || 0)), 0);
+
 
   const salesData = {
     dia: { label: "Hoje", value: formatCurrency(getSalesTotal("dia")) },
@@ -150,11 +177,6 @@ export default function Home() {
   };
 
   const totalProducts = inventory.length;
-  const totalUnits = inventory.reduce((acc, curr) => acc + (curr.stock || 0), 0);
-  const stockValueTotal = inventory.reduce((acc, curr) => {
-    const price = Number(curr.price || 0);
-    return acc + (price * (curr.stock || 0));
-  }, 0);
 
   const stats = [
     { label: "QUANTIDADE DE ITENS EM ESTOQUE", value: totalUnits.toString().padStart(2, '0'), color: "text-accent" },
@@ -200,11 +222,13 @@ export default function Home() {
     }
 
     // Atualizar estado local para feedback imediato
-    setInventory(inventory.map(item => 
+    const updatedInventory = inventory.map(item => 
       item.id === editProductModal.item.id 
         ? { ...item, name: tempName, price: Number(tempPrice), image: imageInputValue }
         : item
-    ));
+    );
+    setInventory(updatedInventory);
+    setCachedProducts(updatedInventory); // Atualiza cache local
     
     closeEditProductModal();
   };
