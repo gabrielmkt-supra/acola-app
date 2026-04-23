@@ -81,19 +81,22 @@ export default function Movimentacoes() {
           const previousStock = Number(invProduct.stock);
           const newStock = previousStock + Number(item.quantity);
 
-          // Atualizar Produto
-          await supabase.from('products').update({ stock: newStock }).eq('id', item.id);
+          const { error: updateError } = await supabase.from('products').update({ stock: newStock }).eq('id', item.id);
+          if (updateError) console.error(`Erro ao estornar estoque do produto ${item.id}:`, updateError);
+
+          const orderShortId = String(orderId).includes('-') ? orderId.split('-').pop() : orderId;
 
           // Registrar Movimentação
-          await supabase.from('inventory_movements').insert([{
+          const { error: moveError } = await supabase.from('inventory_movements').insert([{
             product_id: item.id,
             product_name: item.name,
             type: "Ajuste",
             amount: item.quantity,
             previous_stock: previousStock,
             final_stock: newStock,
-            note: `ESTORNO: Pedido ${orderId.split('-').pop()}`
+            note: `ESTORNO: Pedido #${orderShortId}`
           }]);
+          if (moveError) console.error(`Erro ao registrar movimentação de estorno do produto ${item.id}:`, moveError);
         }
       }
 
@@ -228,7 +231,7 @@ export default function Movimentacoes() {
                       <motion.div key={mov.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-12 gap-4 p-8 items-center hover:bg-primary/5 transition-colors group">
                         <div className="col-span-3">
                           <p className="text-xs font-bold text-primary">{formatDate(mov.timestamp)}</p>
-                          <p className="text-[9px] font-medium text-primary/30 mt-0.5">ID: {mov.id.split('-').pop()}</p>
+                          <p className="text-[9px] font-medium text-primary/30 mt-0.5">ID: {String(mov.id).includes('-') ? mov.id.split('-').pop() : mov.id}</p>
                         </div>
                         <div className="col-span-4 flex items-center gap-3">
                           <div className="w-8 h-8 rounded-lg bg-surface-variant flex items-center justify-center">

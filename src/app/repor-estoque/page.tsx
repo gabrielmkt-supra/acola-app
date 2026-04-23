@@ -65,16 +65,32 @@ export default function ReporEstoque() {
         }
 
         if (newStock !== previousStock) {
-          // 1. Atualizar estoque no Supabase
+          // TENTATIVA 1: Usar RPC para atomicidade (Recomendado)
+          const { data: rpcData, error: rpcError } = await supabase.rpc('process_inventory_update', {
+            p_product_id: id,
+            p_amount: amount,
+            p_is_adjustment: isAdjustmentMode,
+            p_note: isAdjustmentMode ? "AJUSTE MANUAL (PÁGINA REPOSIÇÃO)" : "REPOSIÇÃO DE ESTOQUE"
+          });
+
+          if (!rpcError && rpcData?.success) {
+            continue; // Sucesso via RPC, vai para o próximo item
+          }
+
+          // TENTATIVA 2: Fallback (Caso a RPC não esteja instalada)
+          console.log(`Executando fallback manual para o produto ${id}...`);
           const { error: updateError } = await supabase
             .from('products')
             .update({ stock: newStock })
             .eq('id', id);
 
-          if (updateError) throw updateError;
+          if (updateError) {
+             console.error(`Erro ao atualizar produto ${id}:`, updateError);
+             continue;
+          }
 
-          // 2. Registrar movimentação
-          await supabase.from('inventory_movements').insert([{
+          // Registrar movimentação
+          const { error: moveError } = await supabase.from('inventory_movements').insert([{
             product_id: id,
             product_name: item.name,
             type: isAdjustmentMode ? "Ajuste" : "Entrada",
@@ -83,6 +99,7 @@ export default function ReporEstoque() {
             final_stock: newStock,
             note: isAdjustmentMode ? "AJUSTE MANUAL (PÁGINA REPOSIÇÃO)" : "REPOSIÇÃO DE ESTOQUE"
           }]);
+          if (moveError) console.error(`Erro ao registrar movimentação do produto ${id}:`, moveError);
         }
       }
 

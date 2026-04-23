@@ -148,12 +148,15 @@ export default function PDVPage() {
     try {
       const timestamp = new Date().toISOString();
       const itemsForOrder = cart.map(item => ({
+        product_id: item.id, // Usando product_id para a RPC
         id: item.id,
         name: item.name,
         price: item.price,
+        qty: item.qty, // Usando qty para a RPC
         quantity: item.qty,
         category: item.category
       }));
+
       const orderPayload = {
         client_name: clientName || (channel === "ifood" ? "Cliente iFood" : "Cliente Balcão"),
         client_phone: clientPhone,
@@ -172,30 +175,55 @@ export default function PDVPage() {
         delivery_date: isDelivery ? deliveryDate : null,
         timestamp: timestamp
       };
+
+      // TENTATIVA 1: Usar RPC para atomicidade (Recomendado)
+      const { data: rpcData, error: rpcError } = await supabase.rpc('process_sale', {
+        p_order_payload: orderPayload,
+        p_items: itemsForOrder
+      });
+
+      if (!rpcError && rpcData?.success) {
+        alert(isFiado ? "✅ Venda registrada como PENDENTE!" : "✅ Venda finalizada com sucesso!");
+        router.push("/");
+        return;
+      }
+
+      // TENTATIVA 2: Fallback (Caso a RPC não esteja instalada)
+      console.log("Executando fallback manual...");
       const { data: newOrder, error: orderError } = await supabase.from('orders').insert([orderPayload]).select().single();
       if (orderError) throw orderError;
+
+      const orderShortId = newOrder?.id ? (String(newOrder.id).includes('-') ? newOrder.id.split('-').pop() : newOrder.id) : "N/A";
+
       for (const item of cart) {
         const product = products.find(p => p.id === item.id);
         if (product) {
           const previousStock = Number(product.stock);
           const newStock = Math.max(0, previousStock - item.qty);
-          await supabase.from('products').update({ stock: newStock }).eq('id', item.id);
-          await supabase.from('inventory_movements').insert([{
+          
+          // Atualiza estoque
+          const { error: updateError } = await supabase.from('products').update({ stock: newStock }).eq('id', item.id);
+          if (updateError) console.error(`Erro ao atualizar estoque do produto ${item.id}:`, updateError);
+
+          // Registra movimentação
+          const { error: moveError } = await supabase.from('inventory_movements').insert([{
             product_id: item.id,
             product_name: item.name,
             type: "Saída",
             amount: -item.qty,
             previous_stock: previousStock,
             final_stock: newStock,
-            note: `VENDA: ${orderPayload.client_name.toUpperCase()} - Pedido #${newOrder.id.split('-').pop()} (${channel.toUpperCase()})`
+            note: `VENDA: ${orderPayload.client_name.toUpperCase()} - Pedido #${orderShortId} (${channel.toUpperCase()})`
           }]);
+          if (moveError) console.error(`Erro ao registrar movimentação do produto ${item.id}:`, moveError);
         }
       }
+
       alert(isFiado ? "✅ Venda registrada como PENDENTE!" : "✅ Venda finalizada com sucesso!");
       router.push("/");
     } catch (e: any) {
-      console.error(e);
-      alert("❌ Erro ao finalizar: " + e.message);
+      console.error("Erro completo na finalização:", e);
+      alert("❌ Erro ao finalizar: " + (e.message || "Erro desconhecido"));
     } finally {
       setIsSaving(false);
     }
