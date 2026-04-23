@@ -86,7 +86,7 @@ function NovoProdutoContent() {
             setFoto(prod.image || "");
 
             // Tentar carregar receita de forma robusta
-            let recipeSource = prod.recipe;
+            const recipeSource = prod.recipe;
             
             if (recipeSource) {
               try {
