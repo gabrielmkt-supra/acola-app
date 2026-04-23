@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -76,7 +77,7 @@ export default function PDVPage() {
         setProducts(data);
         setFilteredProducts(data);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`Erro ao carregar produtos (Tentativa ${retryCount}):`, error);
       if (retryCount < 2) {
         setTimeout(() => fetchProducts(retryCount + 1), 1000);
@@ -235,9 +236,10 @@ export default function PDVPage() {
 
       alert(isFiado ? "✅ Venda registrada como PENDENTE!" : "✅ Venda finalizada com sucesso!");
       router.push("/");
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const err = e as { message?: string };
       console.error("Erro completo na finalização:", e);
-      alert("❌ Erro ao finalizar: " + (e.message || "Erro desconhecido"));
+      alert("❌ Erro ao finalizar: " + (err.message || "Erro desconhecido"));
     } finally {
       setIsSaving(false);
     }

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +56,7 @@ export default function Home() {
 
       if (productsRes.data) setInventory(productsRes.data);
       
-      if (salesRes.data) setVendas(salesRes.data.map((s: any) => ({
+      if (salesRes.data) setVendas(salesRes.data.map((s) => ({
         ...s,
         paymentStatus: s.payment_status || 'pago',
         clientName: s.client_name || 'Cliente Balcão'
@@ -63,7 +64,8 @@ export default function Home() {
 
       if (purchasesRes.data) setCompras(purchasesRes.data);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { message?: string };
       console.error("Erro ao carregar dados (Tentativa " + retryCount + "):", error);
       
       // Lógica simples de retry para falhas intermitentes

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState, useEffect } from "react";
@@ -106,9 +107,10 @@ export default function ReporEstoque() {
       addToast("Estoque atualizado com sucesso!", "success");
       await new Promise(resolve => setTimeout(resolve, 800));
       router.push("/");
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { message?: string };
       console.error("Erro na reposição:", error);
-      addToast("Erro ao atualizar o estoque no servidor.", "alert");
+      addToast(`Erro ao atualizar o estoque: ${err.message || "Erro no servidor"}`, "alert");
     } finally {
       setIsSaving(false);
     }

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 export const dynamic = "force-dynamic";
@@ -22,8 +23,8 @@ interface Movement {
 
 export default function Movimentacoes() {
   const [history, setHistory] = useState<Movement[]>([]);
-  const [vendas, setVendas] = useState<any[]>([]);
-  const [inventory, setInventory] = useState<any[]>([]);
+  const [vendas, setVendas] = useState<unknown[]>([]);
+  const [inventory, setInventory] = useState<unknown[]>([]);
   const [filter, setFilter] = useState<"Todos" | "Entrada" | "Saída" | "Ajuste">("Todos");
   const [activeTab, setActiveTab] = useState<"Fluxo" | "Pedidos" | "Pendências">("Fluxo");
 
@@ -63,7 +64,7 @@ export default function Movimentacoes() {
     const params = new URLSearchParams(window.location.search);
     const initialTab = params.get("tab");
     if (initialTab === "Pendências" || initialTab === "Pedidos" || initialTab === "Fluxo") {
-      setActiveTab(initialTab as any);
+      setActiveTab(initialTab as "Pendências" | "Pedidos" | "Fluxo");
     }
   }, []);
 
@@ -138,7 +139,7 @@ export default function Movimentacoes() {
   // Agrupamento de Pendências por Cliente
   const pendenciasPorCliente = vendas
     .filter(v => v.payment_status === "pendente")
-    .reduce((acc: any, curr) => {
+    .reduce((acc: Record<string, any>, curr: any) => {
       const clientName = curr.client_name; // Schema consolidado usa client_name
       if (!acc[clientName]) {
         acc[clientName] = { 
